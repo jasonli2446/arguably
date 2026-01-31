@@ -28,27 +28,26 @@ export default function FloatingNav() {
 
   return (
     <>
-      <nav
-        className={`fixed z-50 transition-all duration-700 ease-out ${
-          scrolled
-            ? 'top-4 left-1/2 -translate-x-1/2 w-auto'
-            : 'top-0 left-0 right-0 w-full'
-        }`}
-      >
+      <div className="fixed top-0 left-0 right-0 z-50 flex justify-center">
         <div
-          className={`transition-all duration-700 ease-out ${
-            scrolled
-              ? 'bg-black/95 backdrop-blur-md border-2 border-white/30 shadow-[8px_8px_0px_rgba(0,0,0,0.5)] px-6'
-              : 'bg-transparent border-b-2 border-white/10'
+          className={`transition-all duration-500 ease-out ${
+            scrolled ? 'w-auto mt-4' : 'w-full mt-0'
           }`}
-          style={{
-            transform: scrolled ? 'skew(-1deg)' : 'none',
-          }}
         >
-          <div className={scrolled ? '' : 'container mx-auto px-6'}>
-            <div className={`flex items-center justify-between transition-all duration-700 ${
-              scrolled ? 'py-3 gap-3' : 'py-5'
-            }`}>
+          <div
+            className={`transition-all duration-500 ease-out ${
+              scrolled
+                ? 'bg-black/95 backdrop-blur-md border-2 border-white/30 shadow-[8px_8px_0px_rgba(0,0,0,0.5)] px-6'
+                : 'bg-transparent border-b-2 border-white/10'
+            }`}
+            style={{
+              transform: scrolled ? 'skew(-1deg)' : 'none',
+            }}
+          >
+            <div className={scrolled ? '' : 'container mx-auto px-6'}>
+              <div className={`flex items-center justify-between transition-all duration-500 ${
+                scrolled ? 'py-3 gap-3' : 'py-5'
+              }`}>
               {/* Logo */}
               <a
                 href="/"
@@ -159,8 +158,9 @@ export default function FloatingNav() {
               </motion.div>
             )}
           </AnimatePresence>
+          </div>
         </div>
-      </nav>
+      </div>
 
       {/* Floating action button - only show when scrolled */}
       <AnimatePresence>

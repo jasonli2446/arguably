@@ -119,10 +119,10 @@ export default function DebateRoom() {
   }
 
   return (
-    <div className="min-h-screen debate-container">
-      <div className="debate-grid fixed inset-0 opacity-30" />
-      
-      <header className="relative z-10 border-b-2 border-border bg-background/80 backdrop-blur-sm">
+    <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
+      <div className="debate-texture fixed inset-0" />
+
+      <header className="relative z-10 border-b-2 border-white/20 bg-gray-900/90 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">

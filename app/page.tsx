@@ -31,12 +31,12 @@ export default function Home() {
                 >
                   <motion.div
                     className="inline-block"
-                    whileHover={{ scale: 1.05 }}
+                    whileHover={{ scale: 1.05, rotate: -2 }}
                     transition={{ type: "spring", stiffness: 400 }}
                   >
                     <span className="debate-badge bg-yellow-400 text-black">
                       <Zap className="w-3 h-3 inline mr-2" />
-                      LIVE DEBATES
+                      87 LIVE NOW
                     </span>
                   </motion.div>
                 </motion.div>
@@ -103,12 +103,12 @@ export default function Home() {
                   transition={{ delay: 0.7, type: "spring" }}
                   className="relative"
                 >
-                  <div className="absolute -top-8 -right-8 w-32 h-32 bg-yellow-400 border-2 border-black animate-float" />
-                  <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-blue-600 border-2 border-black animate-float" style={{ animationDelay: '2s' }} />
+                  <div className="absolute -top-8 -right-8 w-32 h-32 bg-yellow-400 border-2 border-black animate-float" style={{ transform: 'rotate(12deg)' }} />
+                  <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-blue-600 border-2 border-black animate-float" style={{ animationDelay: '2s', transform: 'rotate(-7deg)' }} />
                   <div className="relative bg-gray-900 border-2 border-white/20 p-8 rotate-2 skew-y-1">
                     <div className="text-center space-y-4">
-                      <div className="text-6xl font-black">247</div>
-                      <div className="text-sm debate-mono uppercase text-gray-300">ACTIVE DEBATES</div>
+                      <div className="text-6xl font-black" style={{ letterSpacing: '-0.03em' }}>87</div>
+                      <div className="text-sm debate-mono uppercase text-gray-300">LIVE RIGHT NOW</div>
                       <div className="flex justify-center space-x-2 pt-4">
                         <div className="w-2 h-2 bg-red-600 animate-pulse" />
                         <div className="w-2 h-2 bg-red-600 animate-pulse" style={{ animationDelay: '0.5s' }} />
@@ -128,12 +128,12 @@ export default function Home() {
                 transition={{ delay: 0.7, type: "spring" }}
                 className="relative mx-auto max-w-xs"
               >
-                <div className="absolute -top-6 -right-6 w-24 h-24 bg-yellow-400 border-2 border-black animate-float" />
-                <div className="absolute -bottom-3 -left-3 w-20 h-20 bg-blue-600 border-2 border-black animate-float" style={{ animationDelay: '2s' }} />
+                <div className="absolute -top-6 -right-6 w-24 h-24 bg-yellow-400 border-2 border-black animate-float" style={{ transform: 'rotate(12deg)' }} />
+                <div className="absolute -bottom-3 -left-3 w-20 h-20 bg-blue-600 border-2 border-black animate-float" style={{ animationDelay: '2s', transform: 'rotate(-7deg)' }} />
                 <div className="relative bg-gray-900 border-2 border-white/20 p-6 rotate-1 skew-y-1">
                   <div className="text-center space-y-3">
-                    <div className="text-5xl font-black">247</div>
-                    <div className="text-xs debate-mono uppercase text-gray-300">ACTIVE DEBATES</div>
+                    <div className="text-5xl font-black" style={{ letterSpacing: '-0.03em' }}>87</div>
+                    <div className="text-xs debate-mono uppercase text-gray-300">LIVE RIGHT NOW</div>
                     <div className="flex justify-center space-x-2 pt-2">
                       <div className="w-2 h-2 bg-red-600 animate-pulse" />
                       <div className="w-2 h-2 bg-red-600 animate-pulse" style={{ animationDelay: '0.5s' }} />
@@ -156,10 +156,10 @@ export default function Home() {
               className="text-center mb-20"
             >
               <h2 className="text-5xl md:text-7xl font-black mb-6 text-white">
-                ENGINEERED FOR <span className="text-red-400">TRUTH</span>
+                BUILT FOR <span className="text-red-400">DISCOURSE</span>
               </h2>
               <p className="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
-                Every feature designed for intellectual combat. No generic conferencing tools here.
+                Features that actually matter when arguments get heated.
               </p>
             </motion.div>
 
@@ -172,15 +172,15 @@ export default function Home() {
                 viewport={{ once: true }}
                 className="lg:col-span-7"
               >
-                <div className="bg-gray-900 border-2 border-white/20 p-8 hover:transform hover:translate-y-[-8px] transition-all duration-300">
+                <div className="bg-gray-900 border-2 border-white/20 p-8 hover:transform hover:translate-y-[-8px] transition-all duration-300" style={{ transform: 'rotate(-0.5deg)' }}>
                   <div className="flex items-start space-x-6">
-                    <div className="w-16 h-16 bg-red-600 border-2 border-black flex items-center justify-center flex-shrink-0">
+                    <div className="w-16 h-16 bg-red-600 border-2 border-black flex items-center justify-center flex-shrink-0" style={{ transform: 'rotate(3deg)' }}>
                       <Shield className="w-8 h-8 text-white" />
                     </div>
                     <div>
                       <h3 className="text-2xl font-black mb-4 text-white">LIVE MODERATION</h3>
                       <p className="text-gray-300 leading-relaxed mb-4">
-                        Real-time moderator controls. Pause debates, remove participants, enforce rules instantly. No more chaos, just structured discourse.
+                        Pause mid-sentence. Boot bad actors. Timer overrides. Moderators get real power, not just suggestions.
                       </p>
                       <motion.button
                         className="text-sm debate-mono font-semibold flex items-center group text-white"
@@ -200,13 +200,15 @@ export default function Home() {
                     icon: Clock,
                     title: "TIMED TURNS",
                     description: "No interruptions, no filibustering",
-                    color: "bg-blue-600"
+                    color: "bg-blue-600",
+                    rotate: '0.3deg'
                   },
                   {
                     icon: Mic,
                     title: "LIVE TRANSCRIPTION",
                     description: "Every word captured, searchable",
-                    color: "bg-yellow-600"
+                    color: "bg-yellow-600",
+                    rotate: '-0.4deg'
                   }
                 ].map((feature, index) => (
                   <motion.div
@@ -216,9 +218,10 @@ export default function Home() {
                     viewport={{ once: true }}
                     transition={{ delay: index * 0.1 }}
                     className="bg-gray-900 border-2 border-white/20 p-6"
+                    style={{ transform: `rotate(${feature.rotate})` }}
                   >
                     <div className="flex items-center space-x-4">
-                      <div className={`w-12 h-12 ${feature.color} border-2 border-black flex items-center justify-center flex-shrink-0`}>
+                      <div className={`w-12 h-12 ${feature.color} border-2 border-black flex items-center justify-center flex-shrink-0`} style={{ transform: 'rotate(-2deg)' }}>
                         <feature.icon className="w-6 h-6 text-white" />
                       </div>
                       <div>
@@ -235,20 +238,20 @@ export default function Home() {
                 {[
                   {
                     icon: Users,
-                    title: "DYNAMIC ROLES",
-                    description: "Session-based participant management with seamless role transitions",
-                    color: "bg-purple-600"
+                    title: "ROLE SWITCHING",
+                    description: "Expert to challenger, spectator to speaker — roles update instantly",
+                    color: "bg-orange-600"
                   },
                   {
                     icon: BarChart3,
                     title: "CLAIM DETECTION",
-                    description: "AI-powered fact-checking with automatic source surfacing",
-                    color: "bg-green-600"
+                    description: "Stats and sources surface automatically when someone makes a factual claim",
+                    color: "bg-emerald-600"
                   },
                   {
                     icon: Zap,
                     title: "AUDIENCE QUEUE",
-                    description: "Smart replacement system maintains continuous debate flow",
+                    description: "Next challenger gets pulled from the queue when time's up",
                     color: "bg-red-600"
                   }
                 ].map((feature, index) => (
@@ -301,7 +304,7 @@ export default function Home() {
                 <div className="md:col-span-2">
                   <div className="bg-gradient-to-br from-red-600 to-red-800 border-2 border-white/20 p-8 text-white relative overflow-hidden">
                     <div className="absolute top-4 right-4">
-                      <span className="debate-badge bg-white text-black">MOST POPULAR</span>
+                      <span className="debate-badge bg-white text-black" style={{ transform: 'rotate(-3deg)' }}>POPULAR</span>
                     </div>
                     <div className="relative z-10">
                       <h3 className="text-3xl font-black mb-4">EXPERT vs CROWD</h3>
@@ -389,20 +392,20 @@ export default function Home() {
                   transition={{ delay: 0.2 }}
                 >
                   <h2 className="text-4xl md:text-6xl font-black mb-6 text-white">
-                    READY TO <span className="text-red-400">DEBATE?</span>
+                    READY TO <span className="text-red-400">ARGUE?</span>
                   </h2>
                   <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto leading-relaxed">
-                    Join the intellectual revolution. Structured debate meets modern technology.
+                    Stop lurking. Start a room or join one that's live.
                   </p>
 
                   <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
                     <Link href="/create">
                       <motion.div
-                        whileHover={{ scale: 1.05 }}
+                        whileHover={{ scale: 1.05, rotate: 1 }}
                         whileTap={{ scale: 0.95 }}
                       >
                         <Button className="debate-button bg-red-600 text-white text-lg px-8 py-4">
-                          CREATE YOUR DEBATE
+                          START A ROOM
                         </Button>
                       </motion.div>
                     </Link>
@@ -410,10 +413,10 @@ export default function Home() {
                     <div className="flex items-center space-x-4 text-sm debate-mono">
                       <div className="flex items-center space-x-2">
                         <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" />
-                        <span>247 DEBATES LIVE</span>
+                        <span>87 LIVE</span>
                       </div>
                       <div className="text-gray-400">•</div>
-                      <div className="text-gray-300">12,841 DEBATERS</div>
+                      <div className="text-gray-300">~3K ONLINE</div>
                     </div>
                   </div>
                 </motion.div>
@@ -438,7 +441,7 @@ export default function Home() {
             </div>
           </div>
           <div className="text-center mt-8 debate-mono text-xs opacity-50">
-            © 2024 ARGUABLY. STRUCTURED DEBATE PLATFORM.
+            © 2026 ARGUABLY — TALK IT OUT
           </div>
         </div>
       </footer>
