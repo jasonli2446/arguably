@@ -1,0 +1,193 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Menu, X, Users, Settings, LogOut, Home, Plus, Compass } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+
+export default function FloatingNav() {
+  const [isOpen, setIsOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY
+      setScrolled(currentScrollY > 50)
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const navItems = [
+    { label: 'HOME', href: '/', icon: Home },
+    { label: 'CREATE', href: '/create', icon: Plus },
+    { label: 'BROWSE', href: '/browse', icon: Compass },
+    { label: 'SETTINGS', href: '/settings', icon: Settings },
+  ]
+
+  return (
+    <>
+      <nav
+        className={`fixed z-50 transition-all duration-700 ease-out ${
+          scrolled
+            ? 'top-4 left-1/2 -translate-x-1/2 w-auto'
+            : 'top-0 left-0 right-0 w-full'
+        }`}
+      >
+        <div
+          className={`transition-all duration-700 ease-out ${
+            scrolled
+              ? 'bg-black/95 backdrop-blur-md border-2 border-white/30 shadow-[8px_8px_0px_rgba(0,0,0,0.5)] px-6'
+              : 'bg-transparent border-b-2 border-white/10'
+          }`}
+          style={{
+            transform: scrolled ? 'skew(-1deg)' : 'none',
+          }}
+        >
+          <div className={scrolled ? '' : 'container mx-auto px-6'}>
+            <div className={`flex items-center justify-between transition-all duration-700 ${
+              scrolled ? 'py-3 gap-3' : 'py-5'
+            }`}>
+              {/* Logo */}
+              <a
+                href="/"
+                className={`flex items-center gap-3 relative z-10 transition-all duration-700 ${
+                  scrolled ? 'scale-90' : 'scale-100'
+                }`}
+              >
+                <div
+                  className={`bg-red-600 border-2 border-white shadow-[4px_4px_0px_rgba(0,0,0,0.3)] transition-all duration-700 ${
+                    scrolled ? 'w-7 h-7' : 'w-8 h-8'
+                  }`}
+                />
+                <h1
+                  className={`font-black tracking-tight text-white transition-all duration-700 ${
+                    scrolled ? 'text-base' : 'text-xl'
+                  }`}
+                >
+                  ARGUABLY
+                </h1>
+              </a>
+
+              {/* Desktop Navigation */}
+              <div className="hidden md:flex items-center gap-2">
+                {navItems.map((item) => (
+                  <a
+                    key={item.label}
+                    href={item.href}
+                    className={`flex items-center gap-2 font-bold border-2 border-white bg-transparent text-white hover:bg-white hover:text-black shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0px_rgba(0,0,0,0.5)] transition-all duration-300 ${
+                      scrolled ? 'px-3 py-2 text-xs' : 'px-4 py-2.5 text-sm'
+                    }`}
+                    style={{
+                      transform: 'skew(-2deg)',
+                    }}
+                  >
+                    <item.icon className={`transition-all duration-700 ${scrolled ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                    <span className="whitespace-nowrap">{item.label}</span>
+                  </a>
+                ))}
+              </div>
+
+              {/* Mobile menu button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsOpen(!isOpen)}
+                className={`md:hidden p-2 border-2 transition-all hover:bg-white hover:text-black ${
+                  scrolled
+                    ? 'text-white border-white w-9 h-9'
+                    : 'text-white border-white w-10 h-10'
+                }`}
+                style={{
+                  transform: 'skew(-2deg)'
+                }}
+              >
+                <motion.div
+                  animate={{ rotate: isOpen ? 90 : 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {isOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+                </motion.div>
+              </Button>
+            </div>
+          </div>
+
+          {/* Mobile dropdown menu */}
+          <AnimatePresence>
+            {isOpen && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="md:hidden border-t-2 border-white/20 bg-black/98 backdrop-blur-md overflow-hidden"
+              >
+                <div className="p-4 space-y-2">
+                  {navItems.map((item, index) => (
+                    <motion.a
+                      key={item.label}
+                      href={item.href}
+                      className="flex items-center gap-3 px-4 py-3 border-2 border-white/30 hover:border-white hover:bg-white/10 transition-all text-white font-bold"
+                      onClick={() => setIsOpen(false)}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ delay: index * 0.05 }}
+                      whileHover={{ x: 4 }}
+                      style={{ transform: 'skew(-1deg)' }}
+                    >
+                      <item.icon className="w-5 h-5" />
+                      <span>{item.label}</span>
+                    </motion.a>
+                  ))}
+                  <div className="pt-2 mt-2 border-t-2 border-white/20">
+                    <motion.a
+                      href="/logout"
+                      className="flex items-center gap-3 px-4 py-3 border-2 border-red-400/50 hover:border-red-400 hover:bg-red-600/20 transition-all text-red-400 font-bold"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.25 }}
+                      whileHover={{ x: 4 }}
+                      style={{ transform: 'skew(-1deg)' }}
+                    >
+                      <LogOut className="w-5 h-5" />
+                      <span>LOGOUT</span>
+                    </motion.a>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </nav>
+
+      {/* Floating action button - only show when scrolled */}
+      <AnimatePresence>
+        {scrolled && (
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            exit={{ scale: 0, rotate: 180 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="fixed bottom-8 right-8 z-40"
+          >
+            <motion.a
+              href="/create"
+              className="flex items-center justify-center w-16 h-16 bg-red-600 text-white border-2 border-white shadow-[6px_6px_0px_rgba(0,0,0,0.4)]"
+              style={{ transform: 'skew(-2deg)' }}
+              whileHover={{
+                scale: 1.15,
+                rotate: 5,
+                boxShadow: '8px_8px_0px_rgba(0,0,0,0.6)'
+              }}
+              whileTap={{ scale: 0.9 }}
+            >
+              <span className="text-3xl font-black">+</span>
+            </motion.a>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
