@@ -25,7 +25,17 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const isAuthPage = request.nextUrl.pathname.startsWith("/auth");
+
+  if (!user && !isAuthPage) {
+    return NextResponse.redirect(new URL("/auth", request.url));
+  }
+
+  if (user && isAuthPage) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
 
   return response;
 }

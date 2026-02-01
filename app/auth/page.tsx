@@ -9,16 +9,15 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setMessage(null);
     setLoading(true);
+
+    const supabase = createClient();
 
     if (isSignUp) {
       const { error } = await supabase.auth.signUp({
@@ -85,7 +84,6 @@ export default function AuthPage() {
           </div>
 
           {error && <p className="text-sm text-red-500">{error}</p>}
-          {message && <p className="text-sm text-green-600">{message}</p>}
 
           <button
             type="submit"
@@ -102,7 +100,6 @@ export default function AuthPage() {
             onClick={() => {
               setIsSignUp(!isSignUp);
               setError(null);
-              setMessage(null);
             }}
             className="underline hover:text-gray-700 dark:hover:text-gray-300"
           >
