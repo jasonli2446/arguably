@@ -6,3 +6,54 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum Role {
+  ADMIN
+  CREATOR
+  MODERATOR
+  DEBATER
+  AUDIENCE
+}
+
+enum SessionType {
+  ONE_ON_ONE
+  EXPERT_VS_CROWD
+  PANEL
+}
+
+model User {
+  id          String      @id     @db.Uuid
+  username    String      @unique
+  realname    String?
+  role        Role        @default(AUDIENCE)
+}
+
+model Hosts {
+  creator_id   String      @db.Uuid
+  session_id   String
+
+  creator     User        @relation(fields: [creator_id], references: [id])
+  session     Session     @relation(fields: [session_id], references: [id])
+
+  @@id([creator_id, session_id])
+}
+
+model ParticipatesIn {
+  participant_id      String      @db.Uuid
+  session_id          String
+
+  participant         User        @relation(fields: [participant_id], references: [id])
+  session             Session     @relation(fields: [session_id], references: [id])
+
+  @@id([participant_id, session_id])
+}
+
+model Session {
+  id              String      @id
+  name            String
+  description     String?
+  type            SessionType
+  moderator_id    String      @db.Uuid
+
+  moderator       User        @relation(fields: [moderator_id], references: [id])
+}
