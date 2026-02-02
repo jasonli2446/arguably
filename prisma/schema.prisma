@@ -22,38 +22,43 @@ enum SessionType {
 }
 
 model User {
-  id          String      @id     @db.Uuid
-  username    String      @unique
-  realname    String?
-  role        Role        @default(AUDIENCE)
+  id              String           @id @db.Uuid
+  username        String           @unique
+  realname        String?
+  role            Role             @default(AUDIENCE)
+  hosts           Hosts[]
+  participatesIns ParticipatesIn[]
+  sessions        Session[]
 }
 
 model Hosts {
-  creator_id   String      @db.Uuid
-  session_id   String
+  creator_id String @db.Uuid
+  session_id String
 
-  creator     User        @relation(fields: [creator_id], references: [id])
-  session     Session     @relation(fields: [session_id], references: [id])
+  creator User    @relation(fields: [creator_id], references: [id])
+  session Session @relation(fields: [session_id], references: [id])
 
   @@id([creator_id, session_id])
 }
 
 model ParticipatesIn {
-  participant_id      String      @db.Uuid
-  session_id          String
+  participant_id String @db.Uuid
+  session_id     String
 
-  participant         User        @relation(fields: [participant_id], references: [id])
-  session             Session     @relation(fields: [session_id], references: [id])
+  participant User    @relation(fields: [participant_id], references: [id])
+  session     Session @relation(fields: [session_id], references: [id])
 
   @@id([participant_id, session_id])
 }
 
 model Session {
-  id              String      @id
-  name            String
-  description     String?
-  type            SessionType
-  moderator_id    String      @db.Uuid
+  id           String      @id
+  name         String
+  description  String?
+  type         SessionType
+  moderator_id String      @db.Uuid
 
-  moderator       User        @relation(fields: [moderator_id], references: [id])
+  moderator       User             @relation(fields: [moderator_id], references: [id])
+  hosts           Hosts[]
+  participatesIns ParticipatesIn[]
 }
