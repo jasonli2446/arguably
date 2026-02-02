@@ -1,4 +1,4 @@
 export interface Hosts {
-    expert_id : string;
+    creator_id : string;
     session_id : string;
 }
