@@ -71,8 +71,8 @@ export default function FloatingNav() {
           <div
             className={`transition-all duration-500 ease-out ${
               scrolled
-                ? 'bg-black/95 backdrop-blur-md border-2 border-white/30 shadow-[8px_8px_0px_rgba(0,0,0,0.5)] px-6'
-                : 'bg-transparent border-b-2 border-white/10'
+                ? 'bg-white/95 dark:bg-black/95 backdrop-blur-md border-2 border-gray-300 dark:border-white/30 shadow-[8px_8px_0px_rgba(0,0,0,0.2)] dark:shadow-[8px_8px_0px_rgba(0,0,0,0.5)] px-6'
+                : 'bg-transparent border-b-2 border-gray-200 dark:border-white/10'
             }`}
             style={{
               transform: scrolled ? 'skew(-1deg)' : 'none',
@@ -90,12 +90,12 @@ export default function FloatingNav() {
                 }`}
               >
                 <div
-                  className={`bg-red-600 border-2 border-white shadow-[4px_4px_0px_rgba(0,0,0,0.3)] transition-all duration-700 ${
+                  className={`bg-red-600 border-2 border-gray-900 dark:border-white shadow-[4px_4px_0px_rgba(0,0,0,0.3)] transition-all duration-700 ${
                     scrolled ? 'w-7 h-7' : 'w-8 h-8'
                   }`}
                 />
                 <h1
-                  className={`font-black tracking-tight text-white transition-all duration-700 ${
+                  className={`font-black tracking-tight text-gray-900 dark:text-white transition-all duration-700 ${
                     scrolled ? 'text-base' : 'text-xl'
                   }`}
                 >
@@ -109,7 +109,7 @@ export default function FloatingNav() {
                   <a
                     key={item.label}
                     href={item.href}
-                    className={`flex items-center gap-2 font-bold border-2 border-white bg-transparent text-white hover:bg-white hover:text-black shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0px_rgba(0,0,0,0.5)] transition-all duration-300 ${
+                    className={`flex items-center gap-2 font-bold border-2 border-gray-900 dark:border-white bg-transparent text-gray-900 dark:text-white hover:bg-gray-900 hover:text-white dark:hover:bg-white dark:hover:text-black shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0px_rgba(0,0,0,0.5)] transition-all duration-300 ${
                       scrolled ? 'px-3 py-2 text-xs' : 'px-4 py-2.5 text-sm'
                     }`}
                     style={{
@@ -140,7 +140,7 @@ export default function FloatingNav() {
                     <>
                       <a
                         href="/auth"
-                        className={`flex items-center gap-2 font-bold border-2 border-white bg-transparent text-white hover:bg-white hover:text-black shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0px_rgba(0,0,0,0.5)] transition-all duration-300 ${
+                        className={`flex items-center gap-2 font-bold border-2 border-gray-900 dark:border-white bg-transparent text-gray-900 dark:text-white hover:bg-gray-900 hover:text-white dark:hover:bg-white dark:hover:text-black shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:shadow-[5px_5px_0px_rgba(0,0,0,0.5)] transition-all duration-300 ${
                           scrolled ? 'px-3 py-2 text-xs' : 'px-4 py-2.5 text-sm'
                         }`}
                         style={{
@@ -172,10 +172,10 @@ export default function FloatingNav() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsOpen(!isOpen)}
-                className={`md:hidden p-2 border-2 transition-all hover:bg-white hover:text-black ${
+                className={`md:hidden p-2 border-2 transition-all hover:bg-gray-900 hover:text-white dark:hover:bg-white dark:hover:text-black ${
                   scrolled
-                    ? 'text-white border-white w-9 h-9'
-                    : 'text-white border-white w-10 h-10'
+                    ? 'text-gray-900 dark:text-white border-gray-900 dark:border-white w-9 h-9'
+                    : 'text-gray-900 dark:text-white border-gray-900 dark:border-white w-10 h-10'
                 }`}
                 style={{
                   transform: 'skew(-2deg)'
@@ -199,14 +199,14 @@ export default function FloatingNav() {
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.3 }}
-                className="md:hidden border-t-2 border-white/20 bg-black/98 backdrop-blur-md overflow-hidden"
+                className="md:hidden border-t-2 border-gray-200 dark:border-white/20 bg-white/98 dark:bg-black/98 backdrop-blur-md overflow-hidden"
               >
                 <div className="p-4 space-y-2">
                   {navItems.map((item, index) => (
                     <motion.a
                       key={item.label}
                       href={item.href}
-                      className="flex items-center gap-3 px-4 py-3 border-2 border-white/30 hover:border-white hover:bg-white/10 transition-all text-white font-bold"
+                      className="flex items-center gap-3 px-4 py-3 border-2 border-gray-300 dark:border-white/30 hover:border-gray-900 dark:hover:border-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all text-gray-900 dark:text-white font-bold"
                       onClick={() => setIsOpen(false)}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -219,7 +219,7 @@ export default function FloatingNav() {
                       <span>{item.label}</span>
                     </motion.a>
                   ))}
-                  <div className="pt-2 mt-2 border-t-2 border-white/20">
+                  <div className="pt-2 mt-2 border-t-2 border-gray-200 dark:border-white/20">
                     {!loading && (
                       user ? (
                         <motion.button
@@ -238,7 +238,7 @@ export default function FloatingNav() {
                         <>
                           <motion.a
                             href="/auth"
-                            className="flex items-center gap-3 px-4 py-3 border-2 border-white/50 hover:border-white hover:bg-white/10 transition-all text-white font-bold mb-2"
+                            className="flex items-center gap-3 px-4 py-3 border-2 border-gray-400 dark:border-white/50 hover:border-gray-900 dark:hover:border-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all text-gray-900 dark:text-white font-bold mb-2"
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: 0.25 }}
@@ -284,7 +284,7 @@ export default function FloatingNav() {
           >
             <motion.a
               href="/create"
-              className="flex items-center justify-center w-16 h-16 bg-red-600 text-white border-2 border-white shadow-[6px_6px_0px_rgba(0,0,0,0.4)]"
+              className="flex items-center justify-center w-16 h-16 bg-red-600 text-white border-2 border-gray-900 dark:border-white shadow-[6px_6px_0px_rgba(0,0,0,0.4)]"
               style={{ transform: 'skew(-2deg)' }}
               whileHover={{
                 scale: 1.15,

@@ -9,7 +9,7 @@ import FloatingNav from '@/components/FloatingNav'
 
 export default function Home() {
   return (
-    <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
+    <div className="min-h-screen debate-container bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
       <div className="debate-texture fixed inset-0" />
       <FloatingNav />
 
@@ -43,7 +43,7 @@ export default function Home() {
 
                 <h1 className="text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-black leading-none">
                   <motion.span
-                    className="block text-white"
+                    className="block text-gray-900 dark:text-white"
                     initial={{ opacity: 0, x: -100 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.3, type: "spring" }}
@@ -61,7 +61,7 @@ export default function Home() {
                 </h1>
 
                 <motion.p
-                  className="text-lg md:text-xl lg:text-2xl text-gray-300 leading-relaxed"
+                  className="text-lg md:text-xl lg:text-2xl text-gray-600 dark:text-gray-300 leading-relaxed"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.5 }}
@@ -105,10 +105,10 @@ export default function Home() {
                 >
                   <div className="absolute -top-8 -right-8 w-32 h-32 bg-yellow-400 border-2 border-black animate-float" style={{ transform: 'rotate(12deg)' }} />
                   <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-blue-600 border-2 border-black animate-float" style={{ animationDelay: '2s', transform: 'rotate(-7deg)' }} />
-                  <div className="relative bg-gray-900 border-2 border-white/20 p-8 rotate-2 skew-y-1">
+                  <div className="relative bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-white/20 p-8 rotate-2 skew-y-1">
                     <div className="text-center space-y-4">
-                      <div className="text-6xl font-black" style={{ letterSpacing: '-0.03em' }}>87</div>
-                      <div className="text-sm debate-mono uppercase text-gray-300">LIVE RIGHT NOW</div>
+                      <div className="text-6xl font-black text-gray-900 dark:text-white" style={{ letterSpacing: '-0.03em' }}>87</div>
+                      <div className="text-sm debate-mono uppercase text-gray-600 dark:text-gray-300">LIVE RIGHT NOW</div>
                       <div className="flex justify-center space-x-2 pt-4">
                         <div className="w-2 h-2 bg-red-600 animate-pulse" />
                         <div className="w-2 h-2 bg-red-600 animate-pulse" style={{ animationDelay: '0.5s' }} />
@@ -130,10 +130,10 @@ export default function Home() {
               >
                 <div className="absolute -top-6 -right-6 w-24 h-24 bg-yellow-400 border-2 border-black animate-float" style={{ transform: 'rotate(12deg)' }} />
                 <div className="absolute -bottom-3 -left-3 w-20 h-20 bg-blue-600 border-2 border-black animate-float" style={{ animationDelay: '2s', transform: 'rotate(-7deg)' }} />
-                <div className="relative bg-gray-900 border-2 border-white/20 p-6 rotate-1 skew-y-1">
+                <div className="relative bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-white/20 p-6 rotate-1 skew-y-1">
                   <div className="text-center space-y-3">
-                    <div className="text-5xl font-black" style={{ letterSpacing: '-0.03em' }}>87</div>
-                    <div className="text-xs debate-mono uppercase text-gray-300">LIVE RIGHT NOW</div>
+                    <div className="text-5xl font-black text-gray-900 dark:text-white" style={{ letterSpacing: '-0.03em' }}>87</div>
+                    <div className="text-xs debate-mono uppercase text-gray-600 dark:text-gray-300">LIVE RIGHT NOW</div>
                     <div className="flex justify-center space-x-2 pt-2">
                       <div className="w-2 h-2 bg-red-600 animate-pulse" />
                       <div className="w-2 h-2 bg-red-600 animate-pulse" style={{ animationDelay: '0.5s' }} />
@@ -155,10 +155,10 @@ export default function Home() {
               viewport={{ once: true }}
               className="text-center mb-20"
             >
-              <h2 className="text-5xl md:text-7xl font-black mb-6 text-white">
+              <h2 className="text-5xl md:text-7xl font-black mb-6 text-gray-900 dark:text-white">
                 BUILT FOR <span className="text-red-400">DISCOURSE</span>
               </h2>
-              <p className="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
+              <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto leading-relaxed">
                 Features that actually matter when arguments get heated.
               </p>
             </motion.div>
@@ -172,18 +172,18 @@ export default function Home() {
                 viewport={{ once: true }}
                 className="lg:col-span-7"
               >
-                <div className="bg-gray-900 border-2 border-white/20 p-8 hover:transform hover:translate-y-[-8px] transition-all duration-300" style={{ transform: 'rotate(-0.5deg)' }}>
+                <div className="bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-white/20 p-8 hover:transform hover:translate-y-[-8px] transition-all duration-300" style={{ transform: 'rotate(-0.5deg)' }}>
                   <div className="flex items-start space-x-6">
                     <div className="w-16 h-16 bg-red-600 border-2 border-black flex items-center justify-center flex-shrink-0" style={{ transform: 'rotate(3deg)' }}>
                       <Shield className="w-8 h-8 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-black mb-4 text-white">LIVE MODERATION</h3>
-                      <p className="text-gray-300 leading-relaxed mb-4">
+                      <h3 className="text-2xl font-black mb-4 text-gray-900 dark:text-white">LIVE MODERATION</h3>
+                      <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
                         Pause mid-sentence. Boot bad actors. Timer overrides. Moderators get real power, not just suggestions.
                       </p>
                       <motion.button
-                        className="text-sm debate-mono font-semibold flex items-center group text-white"
+                        className="text-sm debate-mono font-semibold flex items-center group text-gray-900 dark:text-white"
                         whileHover={{ x: 4 }}
                       >
                         LEARN MORE <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
@@ -217,7 +217,7 @@ export default function Home() {
                     whileInView={{ opacity: 1, x: 0 }}
                     viewport={{ once: true }}
                     transition={{ delay: index * 0.1 }}
-                    className="bg-gray-900 border-2 border-white/20 p-6"
+                    className="bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-white/20 p-6"
                     style={{ transform: `rotate(${feature.rotate})` }}
                   >
                     <div className="flex items-center space-x-4">
@@ -225,8 +225,8 @@ export default function Home() {
                         <feature.icon className="w-6 h-6 text-white" />
                       </div>
                       <div>
-                        <h4 className="font-bold text-lg text-white">{feature.title}</h4>
-                        <p className="text-sm text-gray-300">{feature.description}</p>
+                        <h4 className="font-bold text-lg text-gray-900 dark:text-white">{feature.title}</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">{feature.description}</p>
                       </div>
                     </div>
                   </motion.div>
@@ -261,13 +261,13 @@ export default function Home() {
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
                     transition={{ delay: index * 0.1 }}
-                    className="bg-gray-900 border-2 border-white/20 p-6 text-center"
+                    className="bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-white/20 p-6 text-center"
                   >
                     <div className={`${feature.color} w-16 h-16 border-2 border-black flex items-center justify-center mx-auto mb-4`}>
                       <feature.icon className="w-8 h-8 text-white" />
                     </div>
-                    <h4 className="font-bold text-lg mb-2 text-white">{feature.title}</h4>
-                    <p className="text-sm text-gray-300">{feature.description}</p>
+                    <h4 className="font-bold text-lg mb-2 text-gray-900 dark:text-white">{feature.title}</h4>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">{feature.description}</p>
                   </motion.div>
                 ))}
               </div>
@@ -284,10 +284,10 @@ export default function Home() {
               viewport={{ once: true }}
               className="text-center mb-20"
             >
-              <h2 className="text-5xl md:text-7xl font-black mb-6 text-white">
+              <h2 className="text-5xl md:text-7xl font-black mb-6 text-gray-900 dark:text-white">
                 DEBATE <span className="text-red-400">FORMATS</span>
               </h2>
-              <p className="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
+              <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto leading-relaxed">
                 From intellectual one-on-ones to chaotic crowd debates
               </p>
             </motion.div>
@@ -384,17 +384,17 @@ export default function Home() {
               {/* Background decoration */}
               <div className="absolute inset-0 bg-black transform rotate-1 scale-105" />
 
-              <div className="relative bg-gray-900 border-2 border-white/20 p-12 text-center">
+              <div className="relative bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-white/20 p-12 text-center">
                 <motion.div
                   initial={{ opacity: 0 }}
                   whileInView={{ opacity: 1 }}
                   viewport={{ once: true }}
                   transition={{ delay: 0.2 }}
                 >
-                  <h2 className="text-4xl md:text-6xl font-black mb-6 text-white">
+                  <h2 className="text-4xl md:text-6xl font-black mb-6 text-gray-900 dark:text-white">
                     READY TO <span className="text-red-400">ARGUE?</span>
                   </h2>
-                  <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto leading-relaxed">
+                  <p className="text-xl text-gray-600 dark:text-gray-300 mb-8 max-w-2xl mx-auto leading-relaxed">
                     Stop lurking. Start a room or join one that's live.
                   </p>
 
@@ -410,13 +410,13 @@ export default function Home() {
                       </motion.div>
                     </Link>
 
-                    <div className="flex items-center space-x-4 text-sm debate-mono">
+                    <div className="flex items-center space-x-4 text-sm debate-mono text-gray-900 dark:text-white">
                       <div className="flex items-center space-x-2">
                         <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" />
                         <span>87 LIVE</span>
                       </div>
-                      <div className="text-gray-400">•</div>
-                      <div className="text-gray-300">~3K ONLINE</div>
+                      <div className="text-gray-500 dark:text-gray-400">•</div>
+                      <div className="text-gray-600 dark:text-gray-300">~3K ONLINE</div>
                     </div>
                   </div>
                 </motion.div>
@@ -427,11 +427,11 @@ export default function Home() {
       </main>
 
       {/* Footer - Minimalist */}
-      <footer className="relative z-10 bg-black text-white py-8">
+      <footer className="relative z-10 bg-gray-100 dark:bg-black text-gray-900 dark:text-white py-8">
         <div className="container mx-auto px-6">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="flex items-center space-x-3 mb-6 md:mb-0">
-              <div className="w-8 h-8 bg-red-600 border-2 border-white" />
+              <div className="w-8 h-8 bg-red-600 border-2 border-gray-900 dark:border-white" />
               <span className="font-black text-lg">ARGUABLY</span>
             </div>
             <div className="flex space-x-8 debate-mono text-sm">
@@ -440,7 +440,7 @@ export default function Home() {
               <a href="#" className="hover:text-red-600 transition-colors">CONTACT</a>
             </div>
           </div>
-          <div className="text-center mt-8 debate-mono text-xs opacity-50">
+          <div className="text-center mt-8 debate-mono text-xs text-gray-500 dark:text-gray-400">
             © 2026 ARGUABLY — TALK IT OUT
           </div>
         </div>
