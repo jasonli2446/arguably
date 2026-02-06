@@ -42,8 +42,10 @@ model Hosts {
 }
 
 model ParticipatesIn {
-  participant_id String @db.Uuid
+  participant_id String   @db.Uuid
   session_id     String
+  joined_at      DateTime @default(now())
+  left_at        DateTime
 
   participant User    @relation(fields: [participant_id], references: [id])
   session     Session @relation(fields: [session_id], references: [id])
@@ -57,6 +59,8 @@ model Session {
   description  String?
   type         SessionType
   moderator_id String      @db.Uuid
+  created_at   DateTime    @default(now())
+  ended_at     DateTime
 
   moderator       User             @relation(fields: [moderator_id], references: [id])
   hosts           Hosts[]

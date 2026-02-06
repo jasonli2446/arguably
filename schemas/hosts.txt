@@ -1,0 +1,3 @@
+Hosts relation (User Hosts Session, many-to-many)
+    creator_id : string
+    session_id : string

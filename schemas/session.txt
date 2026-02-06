@@ -1,0 +1,12 @@
+define SessionType = 'one-on-one' | 'expert-vs-crowd' | 'panel';
+
+Session relation
+    id : string
+    name : string
+    description : string, optional
+    type : SessionType
+    moderator_id : string (moderator assigned by the expert)
+
+    created_at : timestamp
+    ended_at : timestamp
+}

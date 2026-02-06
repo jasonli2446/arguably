@@ -1,0 +1,5 @@
+ParticipatesIn relation (User ParticipatesIn Session, many-to-many)
+    participant_id : string, where participant should be either debater or audience
+    session_id : string
+    joined_at : timestamp, non-null
+    left_at : timestamp, initially null, updated later

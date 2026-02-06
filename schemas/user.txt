@@ -1,0 +1,7 @@
+define Role = 'admin' | 'creator' | 'moderator' | 'debater' | 'audience';
+
+User relation
+    id : string
+    username : string
+    realname : string, optional
+    role : Role
