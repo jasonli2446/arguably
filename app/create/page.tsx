@@ -1,18 +1,35 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Users, Clock, Settings, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import Link from 'next/link'
+import { createSession } from '@/lib/actions/session'
+import { generateRoomCode } from '@/lib/utils'
+import { SessionType } from '@/lib/generated/prisma'
+
+const FORMAT_MAP: Record<string, SessionType> = {
+  'expert-crowd': 'EXPERT_VS_CROWD',
+  'one-on-one': 'ONE_ON_ONE',
+  'team': 'TEAM',
+  'panel': 'PANEL',
+}
 
 export default function CreateRoom() {
   const [selectedFormat, setSelectedFormat] = useState<string>('expert-crowd')
   const [roomName, setRoomName] = useState('')
   const [turnLength, setTurnLength] = useState('120')
   const [maxParticipants, setMaxParticipants] = useState('10')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [previewCode, setPreviewCode] = useState('ARG-····')
+
+  useEffect(() => {
+    setPreviewCode(generateRoomCode())
+  }, [])
 
   const debateFormats = [
     {
@@ -49,10 +66,30 @@ export default function CreateRoom() {
     }
   ]
 
+  async function handleCreateRoom() {
+    setError(null)
+    setIsSubmitting(true)
+
+    try {
+      await createSession({
+        name: roomName,
+        type: FORMAT_MAP[selectedFormat],
+        maxParticipants: parseInt(maxParticipants),
+        turnLength: parseInt(turnLength),
+      })
+      // createSession redirects on success, so we only reach here on error
+    } catch (err) {
+      // redirect() throws a NEXT_REDIRECT error — don't catch that
+      if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err
+      setError(err instanceof Error ? err.message : "Failed to create room")
+      setIsSubmitting(false)
+    }
+  }
+
   return (
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
       <div className="debate-grid fixed inset-0 opacity-30" />
-      
+
       <header className="relative z-10 border-b-2 border-white/20 bg-gray-900/90 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -92,9 +129,9 @@ export default function CreateRoom() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold debate-mono mb-2 text-white">ROOM ID</label>
+                  <label className="block text-sm font-bold debate-mono mb-2 text-white">ROOM ID (PREVIEW)</label>
                   <Input
-                    value="ARG-2478"
+                    value={previewCode}
                     disabled
                     className="debate-input bg-gray-800 text-gray-400 border-white/10"
                   />
@@ -214,6 +251,16 @@ export default function CreateRoom() {
             </div>
           </motion.div>
 
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 bg-red-600/10 border-2 border-red-600/30 p-4"
+            >
+              <p className="text-sm debate-mono text-red-400">{error}</p>
+            </motion.div>
+          )}
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -221,15 +268,19 @@ export default function CreateRoom() {
             className="flex justify-between items-center"
           >
             <div className="debate-mono text-sm text-gray-400">
-              Room ID: <span className="font-bold text-white">ARG-2478</span>
+              Room ID: <span className="font-bold text-white">{previewCode}</span>
             </div>
             <div className="space-x-4">
               <Button variant="outline" className="debate-button">
                 SAVE DRAFT
               </Button>
-              <Button className="debate-button variant-debate">
-                CREATE ROOM
-                <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />
+              <Button
+                className="debate-button variant-debate"
+                onClick={handleCreateRoom}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'CREATING...' : 'CREATE ROOM'}
+                {!isSubmitting && <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />}
               </Button>
             </div>
           </motion.div>

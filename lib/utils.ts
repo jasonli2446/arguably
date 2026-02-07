@@ -11,6 +11,11 @@ export function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
+export function generateRoomCode(): string {
+  const num = Math.floor(1000 + Math.random() * 9000)
+  return `ARG-${num}`
+}
+
 export function getInitials(name: string): string {
   return name
     .split(' ')
