@@ -18,14 +18,24 @@ enum Role {
 enum SessionType {
   ONE_ON_ONE
   EXPERT_VS_CROWD
+  TEAM
   PANEL
+}
+
+enum SessionStatus {
+  WAITING
+  LIVE
+  PAUSED
+  ENDED
 }
 
 model User {
   id              String           @id @db.Uuid
   username        String           @unique
+  email           String?
   realname        String?
   role            Role             @default(AUDIENCE)
+  created_at      DateTime         @default(now())
   hosts           Hosts[]
   participatesIns ParticipatesIn[]
   sessions        Session[]
@@ -42,10 +52,11 @@ model Hosts {
 }
 
 model ParticipatesIn {
-  participant_id String   @db.Uuid
+  participant_id String    @db.Uuid
   session_id     String
-  joined_at      DateTime @default(now())
-  left_at        DateTime
+  joined_at      DateTime  @default(now())
+  left_at        DateTime?
+  role           Role      @default(AUDIENCE)
 
   participant User    @relation(fields: [participant_id], references: [id])
   session     Session @relation(fields: [session_id], references: [id])
@@ -54,13 +65,17 @@ model ParticipatesIn {
 }
 
 model Session {
-  id           String      @id
-  name         String
-  description  String?
-  type         SessionType
-  moderator_id String      @db.Uuid
-  created_at   DateTime    @default(now())
-  ended_at     DateTime
+  id               String        @id @default(cuid())
+  code             String        @unique
+  name             String
+  description      String?
+  type             SessionType
+  status           SessionStatus @default(WAITING)
+  max_participants Int           @default(10)
+  turn_length      Int           @default(120)
+  moderator_id     String        @db.Uuid
+  created_at       DateTime      @default(now())
+  ended_at         DateTime?
 
   moderator       User             @relation(fields: [moderator_id], references: [id])
   hosts           Hosts[]
