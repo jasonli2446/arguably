@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "test": "playwright test",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "realtime:dev": "npm --prefix realtime run dev",
+    "realtime:docker:up": "npm --prefix realtime run docker:up",
+    "realtime:docker:down": "npm --prefix realtime run docker:down",
+    "realtime:docker:logs": "npm --prefix realtime run docker:logs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

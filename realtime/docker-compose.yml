@@ -1,0 +1,24 @@
+services:
+  sfu:
+    build: .
+    ports:
+      - "3001:3001"
+      - "40000-40100:40000-40100/udp"
+      - "40000-40100:40000-40100/tcp"
+    environment:
+      - ANNOUNCED_IP=${ANNOUNCED_IP:-127.0.0.1}
+      - LISTEN_PORT=3001
+      - RTC_MIN_PORT=40000
+      - RTC_MAX_PORT=40100
+      - TURN_HOST=${ANNOUNCED_IP:-127.0.0.1}
+      - TURN_PORT=3478
+      - TURN_USERNAME=arguably
+      - TURN_PASSWORD=arguably-turn-password
+    restart: unless-stopped
+
+  coturn:
+    image: coturn/coturn:4.6.3
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/turnserver.conf:ro
+    restart: unless-stopped
