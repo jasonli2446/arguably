@@ -1,6 +1,8 @@
 import { listSessions } from '@/lib/actions/session'
 import BrowseClient from './BrowseClient'
 
+export const dynamic = 'force-dynamic'
+
 export default async function BrowsePage() {
   const sessions = await listSessions()
 
