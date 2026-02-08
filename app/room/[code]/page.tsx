@@ -19,6 +19,7 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
     (p) => p.participant_id === currentUserId
   )
   const currentRole = currentParticipant?.role ?? null
+  const currentUsername = currentParticipant?.participant?.username ?? null
 
   // Serialize for client component
   const serialized = {
@@ -42,6 +43,7 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
       session={serialized}
       currentUserId={currentUserId}
       currentRole={currentRole}
+      currentUsername={currentUsername}
     />
   )
 }
