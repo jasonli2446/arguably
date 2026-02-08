@@ -14,9 +14,14 @@ import {
   Play,
   SkipForward,
   Volume2,
+  Video,
+  VideoOff,
   Settings,
-  LogIn
+  LogIn,
+  Loader2
 } from 'lucide-react'
+import { useMediasoup } from '@/hooks/useMediasoup'
+import VideoPanel from '@/components/VideoPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getInitials, formatTime } from '@/lib/utils'
@@ -49,10 +54,12 @@ export default function RoomClient({
   session,
   currentUserId,
   currentRole,
+  currentUsername,
 }: {
   session: SessionData
   currentUserId: string | null
   currentRole: string | null
+  currentUsername: string | null
 }) {
   const router = useRouter()
   const [isPaused, setIsPaused] = useState(session.status === 'PAUSED')
@@ -61,6 +68,22 @@ export default function RoomClient({
 
   const isModeratorOrCreator = currentRole === 'MODERATOR' || currentRole === 'CREATOR'
   const isParticipant = currentRole !== null
+
+  const {
+    connectionState,
+    localStream,
+    remoteStreams,
+    audioMuted,
+    videoOff,
+    toggleMute,
+    toggleVideo,
+    disconnect: disconnectSfu,
+  } = useMediasoup({
+    sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
+    roomId: session.code,
+    displayName: currentUsername ?? 'Anonymous',
+    enabled: isParticipant,
+  })
 
   const moderators = session.participatesIns.filter(
     (p) => p.role === 'MODERATOR' || p.role === 'CREATOR'
@@ -79,6 +102,7 @@ export default function RoomClient({
   }, [isPaused, session.status])
 
   async function handleLeave() {
+    disconnectSfu()
     try {
       await leaveSession(session.id)
       router.push('/browse')
@@ -233,16 +257,10 @@ export default function RoomClient({
                           )}
                         </div>
                       </div>
-                    ) : debaters.length > 0 ? (
-                      <AnimatePresence mode="wait">
-                        <motion.div
-                          key={debaters[0].participant_id}
-                          initial={{ opacity: 0, x: 50 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -50 }}
-                          className="flex flex-col"
-                        >
-                          <div className="flex items-center space-x-4 mb-6">
+                    ) : (
+                      <div className="flex flex-col space-y-4">
+                        {debaters.length > 0 && (
+                          <div className="flex items-center space-x-4">
                             <div className="w-16 h-16 bg-gradient-to-br from-red-600 to-red-800 border-2 border-black flex items-center justify-center text-white font-bold text-xl">
                               {getInitials(displayName(debaters[0].participant))}
                             </div>
@@ -255,22 +273,71 @@ export default function RoomClient({
                               </span>
                             </div>
                           </div>
+                        )}
 
-                          <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-black relative overflow-hidden">
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="text-center">
-                                <Volume2 className="w-16 h-16 text-white/20 mx-auto mb-2" />
-                                <p className="text-white/40 debate-mono text-sm">LIVE VIDEO FEED</p>
+                        {/* Video feeds */}
+                        <div className="space-y-3">
+                          <div className="min-h-[250px]">
+                            {connectionState === 'connecting' ? (
+                              <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-black flex items-center justify-center">
+                                <div className="text-center">
+                                  <Loader2 className="w-10 h-10 text-white/40 mx-auto mb-2 animate-spin" />
+                                  <p className="text-white/40 debate-mono text-sm">CONNECTING TO VIDEO...</p>
+                                </div>
                               </div>
-                            </div>
+                            ) : connectionState === 'error' ? (
+                              <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-red-600/50 flex items-center justify-center">
+                                <div className="text-center">
+                                  <VideoOff className="w-10 h-10 text-red-400/60 mx-auto mb-2" />
+                                  <p className="text-red-400/60 debate-mono text-sm">VIDEO CONNECTION FAILED</p>
+                                </div>
+                              </div>
+                            ) : connectionState === 'connected' ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="min-h-[200px]">
+                                  <VideoPanel stream={localStream} muted label="You" />
+                                </div>
+                                {Array.from(remoteStreams.entries())
+                                  .filter(([, rs]) => rs.kind === 'video')
+                                  .map(([id, rs]) => (
+                                    <div key={id} className="min-h-[200px]">
+                                      <VideoPanel stream={rs.stream} muted={false} label={rs.displayName} />
+                                    </div>
+                                  ))}
+                              </div>
+                            ) : (
+                              <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-black flex items-center justify-center">
+                                <div className="text-center">
+                                  <Volume2 className="w-16 h-16 text-white/20 mx-auto mb-2" />
+                                  <p className="text-white/40 debate-mono text-sm">LIVE VIDEO FEED</p>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </motion.div>
-                      </AnimatePresence>
-                    ) : (
-                      <div className="flex items-center justify-center py-12">
-                        <div className="text-center">
-                          <Mic className="w-16 h-16 text-white/20 mx-auto mb-4" />
-                          <p className="text-gray-400 debate-mono">No active debaters yet</p>
+
+                          {/* Audio/Video toggle controls */}
+                          {connectionState === 'connected' && (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="debate-button"
+                                onClick={toggleMute}
+                              >
+                                {audioMuted ? <MicOff className="w-4 h-4 mr-1" /> : <Mic className="w-4 h-4 mr-1" />}
+                                {audioMuted ? 'UNMUTE' : 'MUTE'}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="debate-button"
+                                onClick={toggleVideo}
+                              >
+                                {videoOff ? <VideoOff className="w-4 h-4 mr-1" /> : <Video className="w-4 h-4 mr-1" />}
+                                {videoOff ? 'CAM ON' : 'CAM OFF'}
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
