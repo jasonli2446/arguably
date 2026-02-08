@@ -47,3 +47,7 @@ CLAUDE.md
 
 /app/generated/prisma
 /lib/generated/prisma
+
+# realtime server
+/realtime/node_modules
+/realtime/dist
