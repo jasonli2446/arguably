@@ -1,4 +1,4 @@
-/* global io, mediasoupClient */
+import * as mediasoupClient from "https://esm.sh/mediasoup-client@3.18.6";
 
 // ── DOM refs ──
 const statusDot = document.getElementById("status-dot");
