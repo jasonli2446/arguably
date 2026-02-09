@@ -3,3 +3,4 @@ ParticipatesIn relation (User ParticipatesIn Session, many-to-many)
     session_id : string
     joined_at : timestamp, non-null
     left_at : timestamp, initially null, updated later
+    role : Role, limited to AUDIENCE (default) or DEBATER

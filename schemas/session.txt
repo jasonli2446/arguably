@@ -1,12 +1,16 @@
-define SessionType = 'one-on-one' | 'expert-vs-crowd' | 'panel';
+define SessionType = ONE_ON_ONE | EXPERT_VS_CROWD | TEAM | PANEL
+define SessionStatus = WAITING | LIVE | PAUSED | ENDED
 
 Session relation
     id : string
+    code : string, unique for search
     name : string
     description : string, optional
-    type : SessionType
+    type : SessionType, must be specified
+    status : SessionStatus, default is WAITING
+    max_participants : int, default is 10
+    turn_length : int, unit is in seconds, default is 120s per turn
     moderator_id : string (moderator assigned by the expert)
 
     created_at : timestamp
-    ended_at : timestamp
-}
+    ended_at : timestamp, initially null, updated later

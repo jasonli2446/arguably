@@ -3,5 +3,7 @@ define Role = 'admin' | 'creator' | 'moderator' | 'debater' | 'audience';
 User relation
     id : string
     username : string
+    email : string, optional, sync-ed from supabase.auth
     realname : string, optional
     role : Role
+    created_at : timestamp, sync-ed from supabase.auth
