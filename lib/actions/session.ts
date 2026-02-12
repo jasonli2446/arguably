@@ -107,29 +107,29 @@ export async function getSessionsByFilters(filters?: {
 }
 
 export async function getSessionByCode(code: string) {
+    
     const session = await prisma.session.findUnique({
+        
         where: { code },
-        /*
+        
         include: {
             moderator: { select: { id: true, username: true, realname: true } },
-            hosts: {
-                include: { creator: { select: { id: true, username: true, realname: true } } },
-            },
-            participatesIns: {
+            host: { select: { id: true, username: true, realname: true } },
+            participates_ins: {
                 where: { left_at: null },
                 include: {
-                    participant: { select: { id: true, username: true, realname: true } },
+                    user: { select: { id: true, username: true, realname: true } },
                 },
             },
         },
-        */
+        
     })
 
     return session
+    
 }
 
 export async function joinSession(sessionId: string) {
-    /*
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Not authenticated")
@@ -139,13 +139,13 @@ export async function joinSession(sessionId: string) {
         select: {
             status: true,
             max_participants: true,
-            _count: { select: { participatesIns: { where: { left_at: null } } } },
+            _count: { select: { participates_ins: { where: { left_at: null } } } },
         },
     })
 
     if (!session) throw new Error("Session not found")
-    if (session.status === "ENDED") throw new Error("Session has ended")
-    if (session._count.participatesIns >= session.max_participants) {
+    if (session.status === SessionStatus.ENDED) throw new Error("Session has ended")
+    if (session._count.participates_ins >= session.max_participants) {
         throw new Error("Session is full")
     }
 
@@ -175,11 +175,10 @@ export async function joinSession(sessionId: string) {
             data: {
                 participant_id: user.id,
                 session_id: sessionId,
-                role: "AUDIENCE",
+                session_role: SessionRole.AUDIENCE,
             },
         })
     }
-    */
 }
 
 export async function leaveSession(sessionId: string) {
@@ -199,7 +198,7 @@ export async function leaveSession(sessionId: string) {
 }
 
 export async function updateSessionStatus(sessionId: string, status: SessionStatus) {
-    /*
+    
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Not authenticated")
@@ -207,13 +206,13 @@ export async function updateSessionStatus(sessionId: string, status: SessionStat
     // Verify the user is the moderator or a host
     const session = await prisma.session.findUnique({
         where: { id: sessionId },
-        include: { hosts: true },
+        include: { host: true, moderator: true },
     })
 
     if (!session) throw new Error("Session not found")
 
     const isModerator = session.moderator_id === user.id
-    const isHost = session.participatesIn.some(h => h.creator_id === user.id)
+    const isHost = session.host_id === user.id
 
     if (!isModerator && !isHost) {
         throw new Error("Only moderators or hosts can update session status")
@@ -228,7 +227,7 @@ export async function updateSessionStatus(sessionId: string, status: SessionStat
 
     await prisma.session.update({
         where: { id: sessionId },
-        data,
+        data
     })
-    */
+    
 }
