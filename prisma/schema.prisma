@@ -7,9 +7,13 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Role {
+enum UniversalRole {
   ADMIN
-  CREATOR
+  USER
+}
+
+enum SessionRole {
+  HOST
   MODERATOR
   DEBATER
   AUDIENCE
@@ -30,36 +34,27 @@ enum SessionStatus {
 }
 
 model User {
-  id              String           @id @db.Uuid
-  username        String           @unique
-  email           String?
-  realname        String?
-  role            Role             @default(AUDIENCE)
-  created_at      DateTime         @default(now())
-  hosts           Hosts[]
-  participatesIns ParticipatesIn[]
-  sessions        Session[]
-}
+  id         String        @id @db.Uuid
+  username   String        @unique
+  email      String?
+  realname   String?
+  role       UniversalRole @default(USER)
+  created_at DateTime      @default(now())
 
-model Hosts {
-  creator_id String @db.Uuid
-  session_id String
-
-  creator User    @relation(fields: [creator_id], references: [id])
-  session Session @relation(fields: [session_id], references: [id])
-
-  @@id([creator_id, session_id])
+  hosted_sessions    Session[]        @relation("HostToSession")
+  moderated_sessions Session[]        @relation("ModeratorToSession")
+  participates_ins   ParticipatesIn[]
 }
 
 model ParticipatesIn {
-  participant_id String    @db.Uuid
+  participant_id String      @db.Uuid
   session_id     String
-  joined_at      DateTime  @default(now())
+  joined_at      DateTime    @default(now())
   left_at        DateTime?
-  role           Role      @default(AUDIENCE)
+  session_role   SessionRole @default(AUDIENCE)
 
-  participant User    @relation(fields: [participant_id], references: [id])
-  session     Session @relation(fields: [session_id], references: [id])
+  user    User    @relation(fields: [participant_id], references: [id])
+  session Session @relation(fields: [session_id], references: [id])
 
   @@id([participant_id, session_id])
 }
@@ -69,15 +64,16 @@ model Session {
   code             String        @unique
   name             String
   description      String?
+  host_id          String        @db.Uuid
+  moderator_id     String?       @db.Uuid
   type             SessionType
   status           SessionStatus @default(WAITING)
   max_participants Int           @default(10)
   turn_length      Int           @default(120)
-  moderator_id     String        @db.Uuid
   created_at       DateTime      @default(now())
   ended_at         DateTime?
 
-  moderator       User             @relation(fields: [moderator_id], references: [id])
-  hosts           Hosts[]
-  participatesIns ParticipatesIn[]
+  host             User             @relation("HostToSession", fields: [host_id], references: [id])
+  moderator        User?            @relation("ModeratorToSession", fields: [moderator_id], references: [id])
+  participates_ins ParticipatesIn[]
 }
