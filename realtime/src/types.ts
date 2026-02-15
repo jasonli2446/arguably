@@ -94,3 +94,41 @@ export interface AckResponse {
   success: boolean;
   [key: string]: unknown;
 }
+
+// ── Debate turn management ──
+
+export interface DebateParticipant {
+  userId: string;
+  displayName: string;
+}
+
+export interface StartDebateRequest {
+  roomId: string;
+  debaters: DebateParticipant[];
+  turnLength: number;
+}
+
+export interface TurnChangedPayload {
+  currentSpeaker: DebateParticipant;
+  turnStartedAt: number;
+  turnLength: number;
+  currentIndex: number;
+}
+
+export interface DebatePausedPayload {
+  timeRemaining: number;
+}
+
+export interface DebateResumedPayload {
+  turnStartedAt: number;
+  turnLength: number;
+}
+
+export interface DebateState {
+  debaterOrder: DebateParticipant[];
+  currentIndex: number;
+  turnLength: number;
+  turnStartedAt: number | null;
+  isPaused: boolean;
+  pausedTimeRemaining: number;
+}

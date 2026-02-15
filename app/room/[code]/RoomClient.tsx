@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from 'react'
+import { motion } from 'framer-motion'
 import {
   Users,
   Clock,
@@ -18,14 +18,16 @@ import {
   VideoOff,
   Settings,
   LogIn,
-  Loader2
+  Loader2,
+  Swords
 } from 'lucide-react'
 import { useMediasoup } from '@/hooks/useMediasoup'
+import { useDebateState } from '@/hooks/useDebateState'
 import VideoPanel from '@/components/VideoPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getInitials, formatTime } from '@/lib/utils'
-import { leaveSession, updateSessionStatus, joinSession } from '@/lib/actions/session'
+import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater } from '@/lib/actions/session'
 import { useRouter } from 'next/navigation'
 
 interface Participant {
@@ -62,8 +64,6 @@ export default function RoomClient({
   currentUsername: string | null
 }) {
   const router = useRouter()
-  const [isPaused, setIsPaused] = useState(session.status === 'PAUSED')
-  const [timeRemaining, setTimeRemaining] = useState(session.turn_length)
   const [isJoining, setIsJoining] = useState(false)
 
   const isModeratorOrCreator = currentRole === 'MODERATOR' || currentRole === 'CREATOR'
@@ -85,21 +85,31 @@ export default function RoomClient({
     enabled: isParticipant,
   })
 
+  const debate = useDebateState({
+    sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
+    roomId: session.code,
+    userId: currentUserId,
+    enabled: isParticipant,
+  })
+
   const moderators = session.participatesIns.filter(
     (p) => p.role === 'MODERATOR' || p.role === 'CREATOR'
   )
-  const debaters = session.participatesIns.filter((p) => p.role === 'DEBATER')
+  const sessionDebaters = session.participatesIns.filter(
+    (p) => p.role === 'DEBATER' || p.role === 'CREATOR'
+  )
   const audience = session.participatesIns.filter((p) => p.role === 'AUDIENCE')
 
-  // Timer countdown
-  useEffect(() => {
-    if (!isPaused && session.status === 'LIVE') {
-      const interval = setInterval(() => {
-        setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0))
-      }, 1000)
-      return () => clearInterval(interval)
-    }
-  }, [isPaused, session.status])
+  // Check if room can accept another debater (ONE_ON_ONE with < 2 debater-role participants)
+  const canJoinAsDebater =
+    session.type === 'ONE_ON_ONE' && sessionDebaters.length < 2
+
+  // Use hook's timer when debate is active, otherwise show session turn_length
+  const displayTime =
+    debate.debateStatus === 'live' || debate.debateStatus === 'paused'
+      ? debate.timeRemaining
+      : session.turn_length
+  const isPaused = debate.debateStatus === 'paused'
 
   async function handleLeave() {
     disconnectSfu()
@@ -113,17 +123,22 @@ export default function RoomClient({
   }
 
   async function handleTogglePause() {
-    const newStatus = isPaused ? 'LIVE' : 'PAUSED'
     try {
-      await updateSessionStatus(session.id, newStatus)
-      setIsPaused(!isPaused)
+      if (isPaused) {
+        await debate.resume()
+        await updateSessionStatus(session.id, 'LIVE')
+      } else {
+        await debate.pause()
+        await updateSessionStatus(session.id, 'PAUSED')
+      }
     } catch (err) {
-      console.error('Failed to update status:', err)
+      console.error('Failed to toggle pause:', err)
     }
   }
 
   async function handleEndSession() {
     try {
+      await debate.endDebate()
       await updateSessionStatus(session.id, 'ENDED')
       router.push('/browse')
     } catch (err) {
@@ -134,6 +149,17 @@ export default function RoomClient({
   async function handleStartSession() {
     try {
       await updateSessionStatus(session.id, 'LIVE')
+
+      // Build debater list from participants with CREATOR or DEBATER role
+      const debaterList = sessionDebaters.map((p) => ({
+        userId: p.participant.id,
+        displayName: p.participant.realname || p.participant.username,
+      }))
+
+      if (debaterList.length === 2) {
+        await debate.startDebate(debaterList, session.turn_length)
+      }
+
       router.refresh()
     } catch (err) {
       console.error('Failed to start session:', err)
@@ -152,8 +178,32 @@ export default function RoomClient({
     }
   }
 
+  async function handleJoinAsDebater() {
+    setIsJoining(true)
+    try {
+      await joinSessionAsDebater(session.id)
+      router.refresh()
+    } catch (err) {
+      console.error('Failed to join as debater:', err)
+    } finally {
+      setIsJoining(false)
+    }
+  }
+
+  async function handleNextTurn() {
+    try {
+      await debate.nextTurn()
+    } catch (err) {
+      console.error('Failed to advance turn:', err)
+    }
+  }
+
   const displayName = (p: { username: string; realname: string | null }) =>
     p.realname || p.username
+
+  // Determine the status indicator and label
+  const isDebateLive = debate.debateStatus === 'live' || debate.debateStatus === 'paused'
+  const statusDot = isDebateLive ? 'bg-red-600 animate-pulse' : 'bg-gray-500'
 
   return (
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
@@ -205,15 +255,29 @@ export default function RoomClient({
               <LogIn className="w-12 h-12 text-red-400 mx-auto mb-4" />
               <h2 className="text-2xl font-bold debate-title text-white mb-2">JOIN THIS DEBATE?</h2>
               <p className="text-gray-400 debate-text mb-6">
-                You&apos;ll join as an audience member. The moderator can promote you to debater.
+                {canJoinAsDebater
+                  ? 'You can join as a debater or as an audience member.'
+                  : "You'll join as an audience member. The moderator can promote you to debater."}
               </p>
-              <Button
-                className="debate-button bg-red-600 text-white border-red-700 w-full"
-                onClick={handleJoin}
-                disabled={isJoining}
-              >
-                {isJoining ? 'JOINING...' : 'JOIN AS AUDIENCE'}
-              </Button>
+              <div className="space-y-2">
+                {canJoinAsDebater && (
+                  <Button
+                    className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                    onClick={handleJoinAsDebater}
+                    disabled={isJoining}
+                  >
+                    <Swords className="w-4 h-4 mr-2" />
+                    {isJoining ? 'JOINING...' : 'JOIN AS DEBATER'}
+                  </Button>
+                )}
+                <Button
+                  className="debate-button bg-red-600 text-white border-red-700 w-full"
+                  onClick={handleJoin}
+                  disabled={isJoining}
+                >
+                  {isJoining ? 'JOINING...' : 'JOIN AS AUDIENCE'}
+                </Button>
+              </div>
             </motion.div>
           </div>
         )}
@@ -222,18 +286,33 @@ export default function RoomClient({
           <div className="grid grid-cols-12 gap-4">
             {/* Main Stage */}
             <div className="col-span-8 space-y-4">
+              {/* YOUR TURN banner */}
+              {debate.isMyTurn && debate.debateStatus === 'live' && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-gradient-to-r from-yellow-500 to-yellow-600 border-2 border-yellow-700 p-3 text-center shadow-[4px_4px_0px_rgba(0,0,0,0.3)]"
+                >
+                  <p className="text-black font-bold debate-title text-lg">YOUR TURN TO SPEAK</p>
+                </motion.div>
+              )}
+
               <div className="min-h-[400px]">
                 <Card className="debate-card border-2">
                   <CardHeader className="border-b-2 border-white/20">
                     <div className="flex items-center justify-between">
                       <CardTitle className="debate-title flex items-center text-white">
-                        <div className={`w-3 h-3 rounded-full mr-3 ${session.status === 'LIVE' ? 'bg-red-600 animate-pulse' : 'bg-gray-500'}`} />
-                        {session.status === 'WAITING' ? 'WAITING TO START' : 'CURRENT SPEAKER'}
+                        <div className={`w-3 h-3 rounded-full mr-3 ${statusDot}`} />
+                        {session.status === 'WAITING'
+                          ? 'WAITING TO START'
+                          : debate.currentSpeaker
+                          ? 'CURRENT SPEAKER'
+                          : 'DEBATE STAGE'}
                       </CardTitle>
                       <div className="flex items-center space-x-2 text-white">
                         <Clock className="w-4 h-4" />
                         <span className="debate-mono font-bold">
-                          {formatTime(timeRemaining)}
+                          {formatTime(displayTime)}
                         </span>
                       </div>
                     </div>
@@ -244,13 +323,19 @@ export default function RoomClient({
                         <div className="text-center">
                           <Users className="w-16 h-16 text-white/20 mx-auto mb-4" />
                           <p className="text-2xl font-bold debate-title text-white mb-2">WAITING FOR PARTICIPANTS</p>
-                          <p className="text-gray-400 debate-mono mb-6">
+                          <p className="text-gray-400 debate-mono mb-2">
                             {session.participatesIns.length} / {session.max_participants} joined
                           </p>
+                          {session.type === 'ONE_ON_ONE' && sessionDebaters.length < 2 && (
+                            <p className="text-yellow-400 debate-mono text-sm mb-4">
+                              Need {2 - sessionDebaters.length} more debater{sessionDebaters.length === 0 ? 's' : ''} to start
+                            </p>
+                          )}
                           {isModeratorOrCreator && (
                             <Button
                               className="debate-button bg-red-600 text-white border-red-700"
                               onClick={handleStartSession}
+                              disabled={session.type === 'ONE_ON_ONE' && sessionDebaters.length < 2}
                             >
                               START DEBATE
                             </Button>
@@ -259,21 +344,58 @@ export default function RoomClient({
                       </div>
                     ) : (
                       <div className="flex flex-col space-y-4">
-                        {debaters.length > 0 && (
+                        {/* Debater display: show both debaters side-by-side */}
+                        {isDebateLive && debate.debaters.length === 2 ? (
+                          <div className="flex items-center justify-center gap-6">
+                            {debate.debaters.map((d, i) => {
+                              const isSpeaking = debate.currentSpeaker?.userId === d.userId
+                              return (
+                                <div
+                                  key={d.userId}
+                                  className={`flex items-center space-x-3 p-3 border-2 transition-all ${
+                                    isSpeaking
+                                      ? 'border-yellow-400 bg-yellow-400/10 shadow-[0_0_15px_rgba(250,204,21,0.3)]'
+                                      : 'border-white/20 opacity-60'
+                                  }`}
+                                >
+                                  <div
+                                    className={`w-14 h-14 border-2 border-black flex items-center justify-center text-white font-bold text-lg ${
+                                      i === 0
+                                        ? 'bg-gradient-to-br from-red-600 to-red-800'
+                                        : 'bg-gradient-to-br from-blue-600 to-blue-800'
+                                    }`}
+                                  >
+                                    {getInitials(d.displayName)}
+                                  </div>
+                                  <div>
+                                    <h3 className="text-lg font-bold debate-title text-white">
+                                      {d.displayName}
+                                    </h3>
+                                    {isSpeaking && (
+                                      <span className="debate-badge bg-yellow-400 text-black text-xs">
+                                        SPEAKING
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : sessionDebaters.length > 0 ? (
                           <div className="flex items-center space-x-4">
                             <div className="w-16 h-16 bg-gradient-to-br from-red-600 to-red-800 border-2 border-black flex items-center justify-center text-white font-bold text-xl">
-                              {getInitials(displayName(debaters[0].participant))}
+                              {getInitials(displayName(sessionDebaters[0].participant))}
                             </div>
                             <div>
                               <h3 className="text-xl font-bold debate-title text-white">
-                                {displayName(debaters[0].participant)}
+                                {displayName(sessionDebaters[0].participant)}
                               </h3>
                               <span className="debate-badge bg-yellow-400 text-black text-xs">
-                                {debaters[0].role}
+                                {sessionDebaters[0].role}
                               </span>
                             </div>
                           </div>
-                        )}
+                        ) : null}
 
                         {/* Video feeds */}
                         <div className="space-y-3">
@@ -416,7 +538,12 @@ export default function RoomClient({
                         {isPaused ? <Play className="w-4 h-4 mr-2" /> : <Pause className="w-4 h-4 mr-2" />}
                         {isPaused ? 'RESUME' : 'PAUSE'}
                       </Button>
-                      <Button variant="outline" size="sm" className="debate-button">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="debate-button"
+                        onClick={handleNextTurn}
+                      >
                         <SkipForward className="w-4 h-4 mr-1" />
                         NEXT
                       </Button>
