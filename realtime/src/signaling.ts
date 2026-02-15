@@ -340,6 +340,23 @@ export function setupSignaling(io: SocketIOServer): void {
       }
     });
 
+    // ── joinDebateRoom (lightweight — no mediasoup, just socket.io room) ──
+    socket.on("joinDebateRoom", (data: { roomId: string }, callback) => {
+      try {
+        socket.join(data.roomId);
+        socketRoomMap.set(socket.id, data.roomId);
+        callback({ success: true });
+      } catch (error) {
+        console.error("joinDebateRoom error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── participantChanged (client notifies others after DB join/leave) ──
+    socket.on("participantChanged", (data: { roomId: string }) => {
+      socket.to(data.roomId).emit("participantChanged", {});
+    });
+
     // ── startDebate ──
     socket.on("startDebate", (data: StartDebateRequest, callback) => {
       try {

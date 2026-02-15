@@ -28,6 +28,8 @@ interface UseDebateStateReturn {
   pause: () => Promise<void>
   resume: () => Promise<void>
   endDebate: () => Promise<void>
+  notifyParticipantChanged: () => void
+  onParticipantChanged: (callback: () => void) => () => void
 }
 
 function request(socket: any, event: string, data: Record<string, any> = {}): Promise<any> {
@@ -102,6 +104,9 @@ export function useDebateState({
 
       socket.on('connect', async () => {
         if (cancelled) return
+
+        // Join the socket.io room so we receive broadcasts
+        await request(socket, 'joinDebateRoom', { roomId })
 
         // Get current debate state on connect (handles reconnect/late-join)
         try {
@@ -205,6 +210,18 @@ export function useDebateState({
     await request(socketRef.current, 'endDebate', { roomId })
   }, [roomId])
 
+  const notifyParticipantChanged = useCallback(() => {
+    if (!socketRef.current) return
+    socketRef.current.emit('participantChanged', { roomId })
+  }, [roomId])
+
+  const onParticipantChanged = useCallback((callback: () => void) => {
+    const socket = socketRef.current
+    if (!socket) return () => {}
+    socket.on('participantChanged', callback)
+    return () => { socket.off('participantChanged', callback) }
+  }, [])
+
   const isMyTurn = currentSpeaker?.userId === userId
 
   return {
@@ -219,5 +236,7 @@ export function useDebateState({
     pause,
     resume,
     endDebate: endDebateAction,
+    notifyParticipantChanged,
+    onParticipantChanged,
   }
 }

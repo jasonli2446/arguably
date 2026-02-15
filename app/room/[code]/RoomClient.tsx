@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   Users,
@@ -92,6 +92,13 @@ export default function RoomClient({
     enabled: isParticipant,
   })
 
+  // Refresh page when another participant joins/leaves
+  useEffect(() => {
+    return debate.onParticipantChanged(() => {
+      router.refresh()
+    })
+  }, [debate.onParticipantChanged, router])
+
   const moderators = session.participatesIns.filter(
     (p) => p.role === 'MODERATOR' || p.role === 'CREATOR'
   )
@@ -170,6 +177,7 @@ export default function RoomClient({
     setIsJoining(true)
     try {
       await joinSession(session.id)
+      debate.notifyParticipantChanged()
       router.refresh()
     } catch (err) {
       console.error('Failed to join:', err)
@@ -182,6 +190,7 @@ export default function RoomClient({
     setIsJoining(true)
     try {
       await joinSessionAsDebater(session.id)
+      debate.notifyParticipantChanged()
       router.refresh()
     } catch (err) {
       console.error('Failed to join as debater:', err)
