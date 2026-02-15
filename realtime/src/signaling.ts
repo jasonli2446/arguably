@@ -30,6 +30,8 @@ import {
 // Track which room each socket is in
 const socketRoomMap = new Map<string, string>();
 const socketPeerMap = new Map<string, { rtpCapabilities: RtpCapabilities }>();
+// Track debate-only sockets (lightweight connections without mediasoup)
+const debateSocketMap = new Map<string, string>(); // socketId -> roomId
 
 export function setupSignaling(io: SocketIOServer): void {
   io.on("connection", (socket: Socket) => {
@@ -344,7 +346,7 @@ export function setupSignaling(io: SocketIOServer): void {
     socket.on("joinDebateRoom", (data: { roomId: string }, callback) => {
       try {
         socket.join(data.roomId);
-        socketRoomMap.set(socket.id, data.roomId);
+        debateSocketMap.set(socket.id, data.roomId);
         callback({ success: true });
       } catch (error) {
         console.error("joinDebateRoom error:", error);
@@ -439,21 +441,28 @@ export function setupSignaling(io: SocketIOServer): void {
     socket.on("disconnect", () => {
       console.log(`Socket disconnected [id:${socket.id}]`);
 
+      // Clean up mediasoup peer
       const roomId = socketRoomMap.get(socket.id);
-      if (!roomId) return;
+      if (roomId) {
+        const room = getRoom(roomId);
+        if (room) {
+          const peer = removePeerFromRoom(room, socket.id);
+          if (peer) {
+            socket.to(roomId).emit("peerLeft", {
+              peerId: socket.id,
+              displayName: peer.displayName,
+            });
+          }
+        }
+        socketRoomMap.delete(socket.id);
+        socketPeerMap.delete(socket.id);
+      }
 
-      const room = getRoom(roomId);
-      if (!room) return;
-
-      const peer = removePeerFromRoom(room, socket.id);
-      socketRoomMap.delete(socket.id);
-      socketPeerMap.delete(socket.id);
-
-      if (peer) {
-        socket.to(roomId).emit("peerLeft", {
-          peerId: socket.id,
-          displayName: peer.displayName,
-        });
+      // Clean up debate socket — notify remaining clients to refresh
+      const debateRoomId = debateSocketMap.get(socket.id);
+      if (debateRoomId) {
+        debateSocketMap.delete(socket.id);
+        socket.to(debateRoomId).emit("participantChanged", {});
       }
 
       // Handle debate turn if current speaker disconnected

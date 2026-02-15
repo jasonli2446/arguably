@@ -17,7 +17,6 @@ import {
   Video,
   VideoOff,
   Settings,
-  LogIn,
   Loader2,
   Swords
 } from 'lucide-react'
@@ -68,6 +67,7 @@ export default function RoomClient({
 
   const isModeratorOrCreator = currentRole === 'MODERATOR' || currentRole === 'CREATOR'
   const isParticipant = currentRole !== null
+  const isDebater = currentRole === 'DEBATER' || currentRole === 'CREATOR'
 
   const {
     connectionState,
@@ -82,14 +82,16 @@ export default function RoomClient({
     sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
     roomId: session.code,
     displayName: currentUsername ?? 'Anonymous',
-    enabled: isParticipant,
+    enabled: isDebater,
   })
 
+  // Debate socket enabled for ALL logged-in users viewing the room
+  // so non-participants can notify others when they join
   const debate = useDebateState({
     sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
     roomId: session.code,
     userId: currentUserId,
-    enabled: isParticipant,
+    enabled: !!currentUserId,
   })
 
   // Refresh page when another participant joins/leaves
@@ -99,9 +101,41 @@ export default function RoomClient({
     })
   }, [debate.onParticipantChanged, router])
 
-  const moderators = session.participatesIns.filter(
-    (p) => p.role === 'MODERATOR' || p.role === 'CREATOR'
-  )
+  // Auto-join as audience when a logged-in non-participant views the room
+  useEffect(() => {
+    if (!currentUserId || isParticipant) return
+
+    let cancelled = false
+    async function autoJoin() {
+      try {
+        await joinSession(session.id)
+        if (!cancelled) {
+          debate.notifyParticipantChanged()
+          router.refresh()
+        }
+      } catch (err) {
+        console.error('Auto-join failed:', err)
+      }
+    }
+    autoJoin()
+    return () => { cancelled = true }
+  }, [currentUserId, isParticipant, session.id, debate, router])
+
+  // Clean up DB on tab close / navigate away
+  useEffect(() => {
+    if (!isParticipant) return
+
+    const handleBeforeUnload = () => {
+      navigator.sendBeacon(
+        '/api/leave-session',
+        new Blob([JSON.stringify({ sessionId: session.id })], { type: 'application/json' })
+      )
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isParticipant, session.id])
+
   const sessionDebaters = session.participatesIns.filter(
     (p) => p.role === 'DEBATER' || p.role === 'CREATOR'
   )
@@ -110,6 +144,10 @@ export default function RoomClient({
   // Check if room can accept another debater (ONE_ON_ONE with < 2 debater-role participants)
   const canJoinAsDebater =
     session.type === 'ONE_ON_ONE' && sessionDebaters.length < 2
+
+  // Current user is audience and could become a debater
+  const canUpgradeToDebater =
+    currentRole === 'AUDIENCE' && canJoinAsDebater
 
   // Use hook's timer when debate is active, otherwise show session turn_length
   const displayTime =
@@ -122,6 +160,7 @@ export default function RoomClient({
     disconnectSfu()
     try {
       await leaveSession(session.id)
+      debate.notifyParticipantChanged()
       router.push('/browse')
     } catch (err) {
       console.error('Failed to leave:', err)
@@ -173,27 +212,14 @@ export default function RoomClient({
     }
   }
 
-  async function handleJoin() {
-    setIsJoining(true)
-    try {
-      await joinSession(session.id)
-      debate.notifyParticipantChanged()
-      router.refresh()
-    } catch (err) {
-      console.error('Failed to join:', err)
-    } finally {
-      setIsJoining(false)
-    }
-  }
-
-  async function handleJoinAsDebater() {
+  async function handleUpgradeToDebater() {
     setIsJoining(true)
     try {
       await joinSessionAsDebater(session.id)
       debate.notifyParticipantChanged()
       router.refresh()
     } catch (err) {
-      console.error('Failed to join as debater:', err)
+      console.error('Failed to upgrade to debater:', err)
     } finally {
       setIsJoining(false)
     }
@@ -253,44 +279,6 @@ export default function RoomClient({
       </header>
 
       <main className="relative z-10 min-h-[calc(100vh-60px)]">
-        {/* Join overlay for non-participants */}
-        {!isParticipant && currentUserId && (
-          <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-sm flex items-center justify-center">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-gray-900 border-2 border-white/20 p-8 max-w-md text-center shadow-[8px_8px_0px_rgba(0,0,0,0.3)]"
-            >
-              <LogIn className="w-12 h-12 text-red-400 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold debate-title text-white mb-2">JOIN THIS DEBATE?</h2>
-              <p className="text-gray-400 debate-text mb-6">
-                {canJoinAsDebater
-                  ? 'You can join as a debater or as an audience member.'
-                  : "You'll join as an audience member. The moderator can promote you to debater."}
-              </p>
-              <div className="space-y-2">
-                {canJoinAsDebater && (
-                  <Button
-                    className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
-                    onClick={handleJoinAsDebater}
-                    disabled={isJoining}
-                  >
-                    <Swords className="w-4 h-4 mr-2" />
-                    {isJoining ? 'JOINING...' : 'JOIN AS DEBATER'}
-                  </Button>
-                )}
-                <Button
-                  className="debate-button bg-red-600 text-white border-red-700 w-full"
-                  onClick={handleJoin}
-                  disabled={isJoining}
-                >
-                  {isJoining ? 'JOINING...' : 'JOIN AS AUDIENCE'}
-                </Button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-
         <div className="container mx-auto px-6 py-4">
           <div className="grid grid-cols-12 gap-4">
             {/* Main Stage */}
@@ -353,7 +341,7 @@ export default function RoomClient({
                       </div>
                     ) : (
                       <div className="flex flex-col space-y-4">
-                        {/* Debater display: show both debaters side-by-side */}
+                        {/* Debater display: show only the two debaters side-by-side */}
                         {isDebateLive && debate.debaters.length === 2 ? (
                           <div className="flex items-center justify-center gap-6">
                             {debate.debaters.map((d, i) => {
@@ -391,85 +379,97 @@ export default function RoomClient({
                             })}
                           </div>
                         ) : sessionDebaters.length > 0 ? (
-                          <div className="flex items-center space-x-4">
-                            <div className="w-16 h-16 bg-gradient-to-br from-red-600 to-red-800 border-2 border-black flex items-center justify-center text-white font-bold text-xl">
-                              {getInitials(displayName(sessionDebaters[0].participant))}
-                            </div>
-                            <div>
-                              <h3 className="text-xl font-bold debate-title text-white">
-                                {displayName(sessionDebaters[0].participant)}
-                              </h3>
-                              <span className="debate-badge bg-yellow-400 text-black text-xs">
-                                {sessionDebaters[0].role}
-                              </span>
-                            </div>
+                          <div className="flex items-center justify-center gap-6">
+                            {sessionDebaters.map((p, i) => (
+                              <div key={p.participant_id} className="flex items-center space-x-3 p-3 border-2 border-white/20">
+                                <div
+                                  className={`w-14 h-14 border-2 border-black flex items-center justify-center text-white font-bold text-lg ${
+                                    i === 0
+                                      ? 'bg-gradient-to-br from-red-600 to-red-800'
+                                      : 'bg-gradient-to-br from-blue-600 to-blue-800'
+                                  }`}
+                                >
+                                  {getInitials(displayName(p.participant))}
+                                </div>
+                                <div>
+                                  <h3 className="text-lg font-bold debate-title text-white">
+                                    {displayName(p.participant)}
+                                  </h3>
+                                  <span className="debate-badge bg-yellow-400 text-black text-xs">
+                                    {p.role}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ) : null}
 
-                        {/* Video feeds */}
-                        <div className="space-y-3">
-                          <div className="min-h-[250px]">
-                            {connectionState === 'connecting' ? (
-                              <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-black flex items-center justify-center">
-                                <div className="text-center">
-                                  <Loader2 className="w-10 h-10 text-white/40 mx-auto mb-2 animate-spin" />
-                                  <p className="text-white/40 debate-mono text-sm">CONNECTING TO VIDEO...</p>
+                        {/* Video feeds — only for debaters */}
+                        {isDebater && (
+                          <div className="space-y-3">
+                            <div className="min-h-[250px]">
+                              {connectionState === 'connecting' ? (
+                                <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-black flex items-center justify-center">
+                                  <div className="text-center">
+                                    <Loader2 className="w-10 h-10 text-white/40 mx-auto mb-2 animate-spin" />
+                                    <p className="text-white/40 debate-mono text-sm">CONNECTING TO VIDEO...</p>
+                                  </div>
                                 </div>
-                              </div>
-                            ) : connectionState === 'error' ? (
-                              <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-red-600/50 flex items-center justify-center">
-                                <div className="text-center">
-                                  <VideoOff className="w-10 h-10 text-red-400/60 mx-auto mb-2" />
-                                  <p className="text-red-400/60 debate-mono text-sm">VIDEO CONNECTION FAILED</p>
+                              ) : connectionState === 'error' ? (
+                                <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-red-600/50 flex items-center justify-center">
+                                  <div className="text-center">
+                                    <VideoOff className="w-10 h-10 text-red-400/60 mx-auto mb-2" />
+                                    <p className="text-red-400/60 debate-mono text-sm">VIDEO CONNECTION FAILED</p>
+                                  </div>
                                 </div>
-                              </div>
-                            ) : connectionState === 'connected' ? (
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="min-h-[200px]">
-                                  <VideoPanel stream={localStream} muted label="You" />
+                              ) : connectionState === 'connected' ? (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="min-h-[200px]">
+                                    <VideoPanel stream={localStream} muted label="You" />
+                                  </div>
+                                  {Array.from(remoteStreams.entries())
+                                    .filter(([, rs]) => rs.kind === 'video')
+                                    .map(([id, rs]) => (
+                                      <div key={id} className="min-h-[200px]">
+                                        <VideoPanel stream={rs.stream} muted={false} label={rs.displayName} />
+                                      </div>
+                                    ))}
                                 </div>
-                                {Array.from(remoteStreams.entries())
-                                  .filter(([, rs]) => rs.kind === 'video')
-                                  .map(([id, rs]) => (
-                                    <div key={id} className="min-h-[200px]">
-                                      <VideoPanel stream={rs.stream} muted={false} label={rs.displayName} />
-                                    </div>
-                                  ))}
-                              </div>
-                            ) : (
-                              <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-black flex items-center justify-center">
-                                <div className="text-center">
-                                  <Volume2 className="w-16 h-16 text-white/20 mx-auto mb-2" />
-                                  <p className="text-white/40 debate-mono text-sm">LIVE VIDEO FEED</p>
+                              ) : (
+                                <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-black flex items-center justify-center">
+                                  <div className="text-center">
+                                    <Volume2 className="w-16 h-16 text-white/20 mx-auto mb-2" />
+                                    <p className="text-white/40 debate-mono text-sm">LIVE VIDEO FEED</p>
+                                  </div>
                                 </div>
+                              )}
+                            </div>
+
+                            {/* Audio/Video toggle controls */}
+                            {connectionState === 'connected' && (
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="debate-button"
+                                  onClick={toggleMute}
+                                >
+                                  {audioMuted ? <MicOff className="w-4 h-4 mr-1" /> : <Mic className="w-4 h-4 mr-1" />}
+                                  {audioMuted ? 'UNMUTE' : 'MUTE'}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="debate-button"
+                                  onClick={toggleVideo}
+                                >
+                                  {videoOff ? <VideoOff className="w-4 h-4 mr-1" /> : <Video className="w-4 h-4 mr-1" />}
+                                  {videoOff ? 'CAM ON' : 'CAM OFF'}
+                                </Button>
                               </div>
                             )}
                           </div>
-
-                          {/* Audio/Video toggle controls */}
-                          {connectionState === 'connected' && (
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="debate-button"
-                                onClick={toggleMute}
-                              >
-                                {audioMuted ? <MicOff className="w-4 h-4 mr-1" /> : <Mic className="w-4 h-4 mr-1" />}
-                                {audioMuted ? 'UNMUTE' : 'MUTE'}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="debate-button"
-                                onClick={toggleVideo}
-                              >
-                                {videoOff ? <VideoOff className="w-4 h-4 mr-1" /> : <Video className="w-4 h-4 mr-1" />}
-                                {videoOff ? 'CAM ON' : 'CAM OFF'}
-                              </Button>
-                            </div>
-                          )}
-                        </div>
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -482,10 +482,23 @@ export default function RoomClient({
                   <CardHeader className="border-b-2 border-white/20">
                     <CardTitle className="debate-title flex items-center text-white">
                       <Users className="w-4 h-4 mr-2" />
-                      AUDIENCE QUEUE ({audience.length})
+                      AUDIENCE ({audience.length})
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-4">
+                    {/* Upgrade to debater button for audience members */}
+                    {canUpgradeToDebater && (
+                      <div className="mb-4">
+                        <Button
+                          className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                          onClick={handleUpgradeToDebater}
+                          disabled={isJoining}
+                        >
+                          <Swords className="w-4 h-4 mr-2" />
+                          {isJoining ? 'JOINING...' : 'BECOME A DEBATER'}
+                        </Button>
+                      </div>
+                    )}
                     {audience.length === 0 ? (
                       <p className="text-gray-500 debate-mono text-sm text-center py-4">No audience members yet</p>
                     ) : (
