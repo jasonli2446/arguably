@@ -8,6 +8,7 @@ import type {
   ConsumeRequest,
   ResumeConsumerRequest,
   CloseProducerRequest,
+  StartDebateRequest,
 } from "./types.js";
 import { iceServers } from "./config.js";
 import { getOrCreateRoom, addPeerToRoom, removePeerFromRoom, getRoom } from "./mediasoup/rooms.js";
@@ -15,10 +16,22 @@ import { createWebRtcTransport, getTransportOptions } from "./mediasoup/transpor
 import { createProducer } from "./mediasoup/producers.js";
 import { createConsumer } from "./mediasoup/consumers.js";
 import type { RtpCapabilities } from "mediasoup/types";
+import {
+  startDebate,
+  advanceTurn,
+  pauseDebate,
+  resumeDebate,
+  endDebate,
+  getDebateState,
+  registerDebaterSocket,
+  handleDebaterDisconnect,
+} from "./debate.js";
 
 // Track which room each socket is in
 const socketRoomMap = new Map<string, string>();
 const socketPeerMap = new Map<string, { rtpCapabilities: RtpCapabilities }>();
+// Track debate-only sockets (lightweight connections without mediasoup)
+const debateSocketMap = new Map<string, string>(); // socketId -> roomId
 
 export function setupSignaling(io: SocketIOServer): void {
   io.on("connection", (socket: Socket) => {
@@ -70,7 +83,8 @@ export function setupSignaling(io: SocketIOServer): void {
           .filter((p) => p.id !== socket.id)
           .map((p) => ({ peerId: p.id, displayName: p.displayName }));
 
-        callback({ success: true, peers: existingPeers });
+        const debateState = getDebateState(data.roomId);
+        callback({ success: true, peers: existingPeers, debateState });
       } catch (error) {
         console.error("joinRoom error:", error);
         callback({ success: false, error: String(error) });
@@ -328,26 +342,131 @@ export function setupSignaling(io: SocketIOServer): void {
       }
     });
 
+    // ── joinDebateRoom (lightweight — no mediasoup, just socket.io room) ──
+    socket.on("joinDebateRoom", (data: { roomId: string }, callback) => {
+      try {
+        socket.join(data.roomId);
+        debateSocketMap.set(socket.id, data.roomId);
+        callback({ success: true });
+      } catch (error) {
+        console.error("joinDebateRoom error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── participantChanged (client notifies others after DB join/leave) ──
+    socket.on("participantChanged", (data: { roomId: string }) => {
+      socket.to(data.roomId).emit("participantChanged", {});
+    });
+
+    // ── startDebate ──
+    socket.on("startDebate", (data: StartDebateRequest, callback) => {
+      try {
+        const result = startDebate(data.roomId, data.debaters, data.turnLength, io);
+        if (result.success) {
+          // Register debater sockets for disconnect handling
+          for (const debater of data.debaters) {
+            // Find socket ID for this user in the room
+            const room = getRoom(data.roomId);
+            if (room) {
+              for (const [, peer] of room.peers) {
+                registerDebaterSocket(peer.id, debater.userId, data.roomId);
+              }
+            }
+          }
+        }
+        callback(result);
+      } catch (error) {
+        console.error("startDebate error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── nextTurn ──
+    socket.on("nextTurn", (data: { roomId: string }, callback) => {
+      try {
+        const result = advanceTurn(data.roomId, io);
+        callback(result);
+      } catch (error) {
+        console.error("nextTurn error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── pauseDebate ──
+    socket.on("pauseDebate", (data: { roomId: string }, callback) => {
+      try {
+        const result = pauseDebate(data.roomId, io);
+        callback(result);
+      } catch (error) {
+        console.error("pauseDebate error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── resumeDebate ──
+    socket.on("resumeDebate", (data: { roomId: string }, callback) => {
+      try {
+        const result = resumeDebate(data.roomId, io);
+        callback(result);
+      } catch (error) {
+        console.error("resumeDebate error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── endDebate ──
+    socket.on("endDebate", (data: { roomId: string }, callback) => {
+      try {
+        const result = endDebate(data.roomId, io);
+        callback(result);
+      } catch (error) {
+        console.error("endDebate error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── getDebateState ──
+    socket.on("getDebateState", (data: { roomId: string }, callback) => {
+      try {
+        const state = getDebateState(data.roomId);
+        callback({ success: true, state });
+      } catch (error) {
+        console.error("getDebateState error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
     // ── disconnect ──
     socket.on("disconnect", () => {
       console.log(`Socket disconnected [id:${socket.id}]`);
 
+      // Clean up mediasoup peer
       const roomId = socketRoomMap.get(socket.id);
-      if (!roomId) return;
-
-      const room = getRoom(roomId);
-      if (!room) return;
-
-      const peer = removePeerFromRoom(room, socket.id);
-      socketRoomMap.delete(socket.id);
-      socketPeerMap.delete(socket.id);
-
-      if (peer) {
-        socket.to(roomId).emit("peerLeft", {
-          peerId: socket.id,
-          displayName: peer.displayName,
-        });
+      if (roomId) {
+        const room = getRoom(roomId);
+        if (room) {
+          const peer = removePeerFromRoom(room, socket.id);
+          if (peer) {
+            socket.to(roomId).emit("peerLeft", {
+              peerId: socket.id,
+              displayName: peer.displayName,
+            });
+          }
+        }
+        socketRoomMap.delete(socket.id);
+        socketPeerMap.delete(socket.id);
       }
+
+      // Clean up debate socket — notify remaining clients to refresh
+      const debateRoomId = debateSocketMap.get(socket.id);
+      if (debateRoomId) {
+        debateSocketMap.delete(socket.id);
+        socket.to(debateRoomId).emit("participantChanged", {});
+      }
+
+      // Handle debate turn if current speaker disconnected
+      handleDebaterDisconnect(socket.id, io);
     });
   });
 }
