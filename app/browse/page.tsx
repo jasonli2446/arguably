@@ -1,24 +1,37 @@
-import { listSessions } from '@/lib/actions/session'
-import BrowseClient from './BrowseClient'
+'use client'
 
-export const dynamic = 'force-dynamic'
+import { SessionStatus, SessionType } from '@/lib/generated/prisma'
 
-export default async function BrowsePage() {
-  const sessions = await listSessions()
+type Session = {
+  id: string
+  code: string
+  name: string
+  type: SessionType
+  status: SessionStatus
+  createdAt: string
+  debaterCapacityProponent: number | null
+  debaterCapacityOpponent: number | null
+  debaterCapacityPanel: number | null
+  audienceCapacity: number
+  turnLength: number
+  moderator: {
+    username: string
+  } | null
+  _count: {
+    participates_ins: number
+  }
+}
 
-  // Serialize dates for client component
-  const serialized = sessions.map((s) => ({
-    id: s.id,
-    code: s.code,
-    name: s.name,
-    type: s.type,
-    status: s.status,
-    created_at: s.created_at.toISOString(),
-    max_participants: s.max_participants,
-    turn_length: s.turn_length,
-    moderator: s.moderator,
-    _count: s._count,
-  }))
+type BrowseClientProps = {
+  sessions: Session[]
+}
 
-  return <BrowseClient sessions={serialized} />
+export default function BrowseClient({ sessions }: BrowseClientProps) {
+  return (
+    <div>
+      {sessions.map((s) => (
+        <div key={s.id}>{s.name}</div>
+      ))}
+    </div>
+  )
 }

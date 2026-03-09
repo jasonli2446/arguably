@@ -45,8 +45,9 @@ export async function createSession(formData: {
     name: string
     description?: string
     type: SessionType
-    debaterCapacityProponent: number
-    debaterCapacityOpponent: number
+    debaterCapacityProponent: number | null
+    debaterCapacityOpponent: number | null
+    debaterCapacityPanel: number | null
     audienceCapacity: number
     turnLength: number
 }) 
@@ -58,9 +59,28 @@ export async function createSession(formData: {
     if (!formData.name.trim()) throw new Error("Room name is required")
 
     // Validate capacities
-    if (formData.debaterCapacityProponent <= 0) throw new Error("Proponent capacity must be at least 1")
-    if (formData.debaterCapacityOpponent <= 0) throw new Error("Opponent capacity must be at least 1")
     if (formData.audienceCapacity < 0) throw new Error("Audience capacity cannot be negative")
+    if (formData.turnLength < 1) throw new Error("Turn length must be at least 1 second")
+
+    // Panel-specific validation
+    if (formData.type === SessionType.PANEL) {
+      if (!formData.debaterCapacityPanel || formData.debaterCapacityPanel < 2) {
+        throw new Error("Panel must have at least 2 panelists")
+      }
+      if (formData.debaterCapacityProponent !== null || formData.debaterCapacityOpponent !== null) {
+        throw new Error("Proponent and opponent capacities must be null for PANEL format")
+      }
+    } else {
+      if (!formData.debaterCapacityProponent || formData.debaterCapacityProponent < 1) {
+        throw new Error("Proponent capacity must be at least 1")
+      }
+      if (formData.debaterCapacityOpponent === null || formData.debaterCapacityOpponent < 0) {
+        throw new Error("Opponent capacity cannot be negative")
+      }
+      if (formData.debaterCapacityPanel !== null) {
+        throw new Error("Panel capacity must be null for non-PANEL format")
+      }
+    }
 
     // Generate a unique room code
     let code = generateRoomCode()
@@ -80,6 +100,7 @@ export async function createSession(formData: {
             type: formData.type,
             debater_capacity_proponent: formData.debaterCapacityProponent,
             debater_capacity_opponent: formData.debaterCapacityOpponent,
+            debater_capacity_panel: formData.debaterCapacityPanel,
             audience_capacity: formData.audienceCapacity,
             turn_length: formData.turnLength,
             participates_ins: {
