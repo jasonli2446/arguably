@@ -5,13 +5,49 @@ import { prisma } from "@/lib/prisma"
 import { generateRoomCode } from "@/lib/utils"
 import { redirect } from "next/navigation"
 import { Prisma, SessionRole, SessionStatus, SessionType } from "@/lib/generated/prisma"
-import { join } from "path"
+import { get } from "http"
+
+// Type for session capacity info to avoid refetching
+interface SessionCapacityInfo {
+    sessionType: SessionType
+    debaterCapacityProponent: number | null
+    debaterCapacityOpponent: number | null
+    debaterCapacityPanel: number | null
+    audienceCapacity: number
+}
+
+/**
+ * Calculate total session capacity, +1 for including moderator
+ * @param capacityInfo - Object with debater and audience capacity fields
+ * @returns Total session capacity
+ */
+function getSessionCapacity(capacityInfo: SessionCapacityInfo): number {
+    if (capacityInfo.sessionType === SessionType.PANEL) {
+        return (capacityInfo.debaterCapacityPanel ?? 0) + capacityInfo.audienceCapacity + 1
+    } 
+    else {
+        return (capacityInfo.debaterCapacityProponent ?? 0) + 
+        (capacityInfo.debaterCapacityOpponent ?? 0) + 
+        capacityInfo.audienceCapacity + 1
+    }
+}
+
+/**
+ * Calculate total debater capacity (proponent + opponent)
+ * @param capacityInfo - Object with debater capacity fields
+ * @returns Total debater capacity
+ */
+function getTotalDebaterCapacity(capacityInfo: SessionCapacityInfo): number {
+    return getSessionCapacity(capacityInfo) - capacityInfo.audienceCapacity - 1;
+}
 
 export async function createSession(formData: {
     name: string
     description?: string
     type: SessionType
-    maxParticipants: number
+    debaterCapacityProponent: number
+    debaterCapacityOpponent: number
+    audienceCapacity: number
     turnLength: number
 }) 
 {
@@ -20,6 +56,11 @@ export async function createSession(formData: {
     if (!user) throw new Error("Not authenticated")
 
     if (!formData.name.trim()) throw new Error("Room name is required")
+
+    // Validate capacities
+    if (formData.debaterCapacityProponent <= 0) throw new Error("Proponent capacity must be at least 1")
+    if (formData.debaterCapacityOpponent <= 0) throw new Error("Opponent capacity must be at least 1")
+    if (formData.audienceCapacity < 0) throw new Error("Audience capacity cannot be negative")
 
     // Generate a unique room code
     let code = generateRoomCode()
@@ -36,13 +77,14 @@ export async function createSession(formData: {
             name: formData.name.trim(),
             description: formData.description?.trim() || null,
             host_id: user.id,
-            // moderator to be added after session creation
             type: formData.type,
-            max_participants: formData.maxParticipants,
+            debater_capacity_proponent: formData.debaterCapacityProponent,
+            debater_capacity_opponent: formData.debaterCapacityOpponent,
+            audience_capacity: formData.audienceCapacity,
             turn_length: formData.turnLength,
             participates_ins: {
                 create: {
-                    participant_id: user.id,
+                    user_id: user.id,
                     joined_at: new Date(),
                     session_role: SessionRole.HOST,
                 },
@@ -51,22 +93,6 @@ export async function createSession(formData: {
     })
 
     redirect(`/room/${session.code}`)
-}
-
-async function getSessionModerator(sessionId: string) {
-    const session = await prisma.session.findUnique({
-        where: { id : sessionId },
-        include: { moderator: true }
-    })
-    return session?.moderator
-}
-
-async function getSessionHost(sessionId: string) {
-    const session = await prisma.session.findUnique({
-        where: { id: sessionId },
-        include: { host: true },
-    })
-    return session?.host
 }
 
 export async function getSessionsByFilters(filters?: {
@@ -137,23 +163,36 @@ export async function joinSession(sessionId: string) {
     const session = await prisma.session.findUnique({
         where: { id: sessionId },
         select: {
+            type: true,
             status: true,
-            max_participants: true,
+            debater_capacity_proponent: true,
+            debater_capacity_opponent: true,
+            debater_capacity_panel: true,
+            audience_capacity: true,
             _count: { select: { participates_ins: { where: { left_at: null } } } },
         },
     })
 
     if (!session) throw new Error("Session not found")
     if (session.status === SessionStatus.ENDED) throw new Error("Session has ended")
-    if (session._count.participates_ins >= session.max_participants) {
+    
+    const totalCapacity = getSessionCapacity({
+        sessionType: session.type,
+        debaterCapacityProponent: session.debater_capacity_proponent,
+        debaterCapacityOpponent: session.debater_capacity_opponent,
+        debaterCapacityPanel: session.debater_capacity_panel,
+        audienceCapacity: session.audience_capacity,
+    })
+    
+    if (session._count.participates_ins >= totalCapacity) {
         throw new Error("Session is full")
     }
 
     // Check for existing participation (re-join case)
     const existing = await prisma.participatesIn.findUnique({
         where: {
-            participant_id_session_id: {
-                participant_id: user.id,
+            user_id_session_id: {
+                user_id: user.id,
                 session_id: sessionId,
             },
         },
@@ -163,8 +202,8 @@ export async function joinSession(sessionId: string) {
         // Re-join: clear left_at
         await prisma.participatesIn.update({
             where: {
-                participant_id_session_id: {
-                    participant_id: user.id,
+                user_id_session_id: {
+                    user_id: user.id,
                     session_id: sessionId,
                 },
             },
@@ -173,7 +212,7 @@ export async function joinSession(sessionId: string) {
     } else {
         await prisma.participatesIn.create({
             data: {
-                participant_id: user.id,
+                user_id: user.id,
                 session_id: sessionId,
                 session_role: SessionRole.AUDIENCE,
             },
@@ -181,67 +220,88 @@ export async function joinSession(sessionId: string) {
     }
 }
 
-export async function joinSessionAsDebater(sessionId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
+export async function joinSessionAsDebater(sessionId: string, isProponent: boolean) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("Not authenticated")
 
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: {
-      status: true,
-      type: true,
-      max_participants: true,
-      _count: { select: { participatesIns: { where: { left_at: null } } } },
-      participatesIns: {
-        where: { left_at: null, role: { in: ["DEBATER", "CREATOR"] } },
-        select: { participant_id: true },
-      },
-    },
-  })
-
-  if (!session) throw new Error("Session not found")
-  if (session.status === "ENDED") throw new Error("Session has ended")
-  if (session.type !== "ONE_ON_ONE") throw new Error("Only one-on-one debates support join as debater")
-
-  // Count existing debaters (CREATOR + DEBATER roles)
-  if (session.participatesIns.length >= 2) {
-    throw new Error("Debate already has 2 debaters")
-  }
-
-  if (session._count.participatesIns >= session.max_participants) {
-    throw new Error("Session is full")
-  }
-
-  // Check for existing participation (re-join case)
-  const existing = await prisma.participatesIn.findUnique({
-    where: {
-      participant_id_session_id: {
-        participant_id: user.id,
-        session_id: sessionId,
-      },
-    },
-  })
-
-  if (existing) {
-    await prisma.participatesIn.update({
-      where: {
-        participant_id_session_id: {
-          participant_id: user.id,
-          session_id: sessionId,
+    const session = await prisma.session.findUnique({
+        where: { id: sessionId },
+        select: {
+            status: true,
+            type: true,
+            debater_capacity_proponent: true,
+            debater_capacity_opponent: true,
+            debater_capacity_panel: true,
+            audience_capacity: true,
+            _count: { select: { participates_ins: { where: { left_at: null } } } },
+            participates_ins: {
+                where: { left_at: null, session_role: { in: [SessionRole.DEBATER, SessionRole.HOST] } },
+                select: { user_id: true },
+            },
         },
-      },
-      data: { left_at: null, role: "DEBATER" },
     })
-  } else {
-    await prisma.participatesIn.create({
-      data: {
-        participant_id: user.id,
-        session_id: sessionId,
-        role: "DEBATER",
-      },
+
+    if (!session) throw new Error("Session not found")
+    if (session.status === SessionStatus.ENDED) throw new Error("Session has ended")
+
+    const capacityInfo: SessionCapacityInfo = {
+        sessionType: session.type,
+        debaterCapacityProponent: session.debater_capacity_proponent,
+        debaterCapacityOpponent: session.debater_capacity_opponent,
+        debaterCapacityPanel: session.debater_capacity_panel,
+        audienceCapacity: session.audience_capacity,
+    }
+
+    const totalDebaterCapacity = getTotalDebaterCapacity(capacityInfo)
+    const totalCapacity = getSessionCapacity(capacityInfo)
+
+    // Regardless of session type, debater capacity is consistently calculated
+    if (isProponent) {
+        if (session.type === SessionType.EXPERT_VS_CROWD || session.type === SessionType.ONE_ON_ONE) {
+            throw new Error("Cannot join as proponent in this session type")
+        }
+
+    } else {
+        if (session.participates_ins.length >= totalDebaterCapacity) {
+            throw new Error(`Debate already has ${totalDebaterCapacity} debaters`)
+        }
+    }
+
+    // Check total session capacity
+    if (session._count.participates_ins >= totalCapacity) {
+        throw new Error("Session is full")
+    }
+
+    // Check for existing participation (re-join case)
+    const existing = await prisma.participatesIn.findUnique({
+        where: {
+            user_id_session_id: {
+                user_id: user.id,
+                session_id: sessionId,
+            },
+        },
     })
-  }
+
+    if (existing) {
+        await prisma.participatesIn.update({
+            where: {
+                user_id_session_id: {
+                    user_id: user.id,
+                    session_id: sessionId,
+                },
+            },
+            data: { left_at: null, session_role: SessionRole.DEBATER },
+        })
+    } else {
+        await prisma.participatesIn.create({
+            data: {
+                user_id: user.id,
+                session_id: sessionId,
+                session_role: SessionRole.DEBATER,
+            },
+        })
+    }
 }
 
 export async function leaveSession(sessionId: string) {
@@ -251,8 +311,8 @@ export async function leaveSession(sessionId: string) {
 
     await prisma.participatesIn.update({
         where: {
-            participant_id_session_id: {
-                participant_id: user.id,
+            user_id_session_id: {
+                user_id: user.id,
                 session_id: sessionId,
             },
         },

@@ -47,31 +47,34 @@ model User {
 }
 
 model ParticipatesIn {
-  participant_id String      @db.Uuid
-  session_id     String
-  joined_at      DateTime    @default(now())
-  left_at        DateTime?
-  session_role   SessionRole @default(AUDIENCE)
+  user_id      String      @db.Uuid
+  session_id   String
+  joined_at    DateTime    @default(now())
+  left_at      DateTime?
+  session_role SessionRole @default(AUDIENCE)
 
-  user    User    @relation(fields: [participant_id], references: [id])
+  user    User    @relation(fields: [user_id], references: [id])
   session Session @relation(fields: [session_id], references: [id])
 
-  @@id([participant_id, session_id])
+  @@id([user_id, session_id])
 }
 
 model Session {
-  id               String        @id @default(cuid())
-  code             String        @unique
-  name             String
-  description      String?
-  host_id          String        @db.Uuid
-  moderator_id     String?       @db.Uuid
-  type             SessionType
-  status           SessionStatus @default(WAITING)
-  max_participants Int           @default(10)
-  turn_length      Int           @default(120)
-  created_at       DateTime      @default(now())
-  ended_at         DateTime?
+  id                         String        @id @default(cuid())
+  code                       String        @unique
+  name                       String
+  description                String?
+  host_id                    String        @db.Uuid
+  moderator_id               String?       @db.Uuid
+  type                       SessionType
+  status                     SessionStatus @default(WAITING)
+  debater_capacity_proponent Int?          @default(1)
+  debater_capacity_opponent  Int?          @default(1)
+  debater_capacity_panel     Int?          @default(5)
+  audience_capacity          Int           @default(10)
+  turn_length                Int           @default(120)
+  created_at                 DateTime      @default(now())
+  ended_at                   DateTime?
 
   host             User             @relation("HostToSession", fields: [host_id], references: [id])
   moderator        User?            @relation("ModeratorToSession", fields: [moderator_id], references: [id])

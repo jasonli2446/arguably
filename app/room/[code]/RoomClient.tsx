@@ -28,27 +28,26 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getInitials, formatTime } from '@/lib/utils'
 import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater } from '@/lib/actions/session'
 import { useRouter } from 'next/navigation'
-
-interface Participant {
-  participant_id: string
-  role: string
-  participant: {
-    id: string
-    username: string
-    realname: string | null
-  }
-}
+import { SessionRole, SessionStatus, SessionType } from '@/lib/generated/prisma'
 
 interface SessionData {
   id: string
   code: string
   name: string
-  type: string
-  status: string
-  turn_length: number
-  max_participants: number
-  moderator: { id: string; username: string; realname: string | null }
-  participatesIns: Participant[]
+  type: SessionType
+  status: SessionStatus
+  turnLength: number
+  debaterCapacityProponent: number | null
+  debaterCapacityOpponent: number | null
+  debaterCapacityPanel: number | null
+  audienceCapacity: number
+  host: { id: string; username: string; realname: string }
+  moderator: { id: string; username: string; realname: string }
+  participatesIns: {
+    userId: string
+    sessionRole: SessionRole
+    user: { id: string; username: string; realname: string }
+  }[]
 }
 
 export default function RoomClient({
@@ -58,16 +57,19 @@ export default function RoomClient({
   currentUsername,
 }: {
   session: SessionData
-  currentUserId: string | null
-  currentRole: string | null
-  currentUsername: string | null
+  currentUserId: string
+  currentRole: SessionRole
+  currentUsername: string
 }) {
   const router = useRouter()
+  const [isPaused, setIsPaused] = useState(session.status === SessionStatus.PAUSED)
+  const [timeRemaining, setTimeRemaining] = useState(session.turnLength)
   const [isJoining, setIsJoining] = useState(false)
+  const [showDebaterOptions, setShowDebaterOptions] = useState(false)
 
-  const isModeratorOrCreator = currentRole === 'MODERATOR' || currentRole === 'CREATOR'
+  const isModeratorOrCreator = currentRole === SessionRole.MODERATOR || currentRole === SessionRole.HOST
   const isParticipant = currentRole !== null
-  const isDebater = currentRole === 'DEBATER' || currentRole === 'CREATOR'
+  const isDebater = currentRole === SessionRole.DEBATER || currentRole === SessionRole.HOST
 
   const {
     connectionState,
@@ -81,12 +83,11 @@ export default function RoomClient({
   } = useMediasoup({
     sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
     roomId: session.code,
-    displayName: currentUsername ?? 'Anonymous',
+    displayName: currentUsername,
     enabled: isDebater,
   })
 
   // Debate socket enabled for ALL logged-in users viewing the room
-  // so non-participants can notify others when they join
   const debate = useDebateState({
     sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
     roomId: session.code,
@@ -136,25 +137,60 @@ export default function RoomClient({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isParticipant, session.id])
 
-  const sessionDebaters = session.participatesIns.filter(
-    (p) => p.role === 'DEBATER' || p.role === 'CREATOR'
+  // Filter participants by role
+  const moderators = session.participatesIns.filter(
+    (p) => p.sessionRole === SessionRole.MODERATOR || p.sessionRole === SessionRole.HOST
   )
-  const audience = session.participatesIns.filter((p) => p.role === 'AUDIENCE')
+  const debaters = session.participatesIns.filter(
+    (p) => p.sessionRole === SessionRole.DEBATER || p.sessionRole === SessionRole.HOST
+  )
+  const audience = session.participatesIns.filter(
+    (p) => p.sessionRole === SessionRole.AUDIENCE
+  )
 
-  // Check if room can accept another debater (ONE_ON_ONE with < 2 debater-role participants)
-  const canJoinAsDebater =
-    session.type === 'ONE_ON_ONE' && sessionDebaters.length < 2
+  // Calculate total capacities
+  const getTotalDebaterCapacity = () => {
+    if (session.type === SessionType.PANEL) {
+      return session.debaterCapacityPanel ?? 0
+    }
+    return (session.debaterCapacityProponent ?? 0) + (session.debaterCapacityOpponent ?? 0)
+  }
+
+  const totalDebaterCapacity = getTotalDebaterCapacity()
+
+  // Check if room can accept another debater
+  const canJoinAsDebater = debaters.length < totalDebaterCapacity
 
   // Current user is audience and could become a debater
   const canUpgradeToDebater =
-    currentRole === 'AUDIENCE' && canJoinAsDebater
+    currentRole === SessionRole.AUDIENCE && canJoinAsDebater
 
-  // Use hook's timer when debate is active, otherwise show session turn_length
+  // Check proponent/opponent specific availability
+  const proponentsFull = 
+    session.type !== SessionType.PANEL && 
+    (session.debaterCapacityProponent ?? 0) > 0 &&
+    debaters.filter(d => d.sessionRole === SessionRole.DEBATER).length >= (session.debaterCapacityProponent ?? 0)
+  
+  const opponentsFull = 
+    session.type !== SessionType.PANEL &&
+    (session.debaterCapacityOpponent ?? 0) > 0 &&
+    debaters.filter(d => d.sessionRole === SessionRole.DEBATER).length >= totalDebaterCapacity
+
+  // Use hook's timer when debate is active
   const displayTime =
     debate.debateStatus === 'live' || debate.debateStatus === 'paused'
       ? debate.timeRemaining
-      : session.turn_length
-  const isPaused = debate.debateStatus === 'paused'
+      : session.turnLength
+
+  // Timer countdown
+  useEffect(() => {
+    if (!isPaused && session.status === SessionStatus.LIVE) {
+      const interval = setInterval(() => {
+        setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0))
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [isPaused, session.status])
 
   async function handleLeave() {
     disconnectSfu()
@@ -185,7 +221,7 @@ export default function RoomClient({
   async function handleEndSession() {
     try {
       await debate.endDebate()
-      await updateSessionStatus(session.id, 'ENDED')
+      await updateSessionStatus(session.id, SessionStatus.ENDED)
       router.push('/browse')
     } catch (err) {
       console.error('Failed to end session:', err)
@@ -196,32 +232,34 @@ export default function RoomClient({
     try {
       await updateSessionStatus(session.id, 'LIVE')
 
-      // Build debater list from participants with CREATOR or DEBATER role
-      const debaterList = sessionDebaters.map((p) => ({
-        userId: p.participant.id,
-        displayName: p.participant.realname || p.participant.username,
+      // Build debater list from participants with HOST or DEBATER role
+      const debaterList = debaters.map((p) => ({
+        userId: p.user.id,
+        displayName: p.user.realname || p.user.username,
       }))
 
-      if (debaterList.length === 2) {
-        await debate.startDebate(debaterList, session.turn_length)
+      if (debaterList.length >= 2) {
+        await debate.startDebate(debaterList, session.turnLength)
       }
 
+      await updateSessionStatus(session.id, SessionStatus.LIVE)
       router.refresh()
     } catch (err) {
       console.error('Failed to start session:', err)
     }
   }
 
-  async function handleUpgradeToDebater() {
+  async function handleUpgradeToDebater(isProponent: boolean) {
     setIsJoining(true)
     try {
-      await joinSessionAsDebater(session.id)
+      await joinSessionAsDebater(session.id, isProponent)
       debate.notifyParticipantChanged()
       router.refresh()
     } catch (err) {
       console.error('Failed to upgrade to debater:', err)
     } finally {
       setIsJoining(false)
+      setShowDebaterOptions(false)
     }
   }
 
@@ -233,12 +271,27 @@ export default function RoomClient({
     }
   }
 
-  const displayName = (p: { username: string; realname: string | null }) =>
+  const displayName = (p: { username: string; realname: string }) =>
     p.realname || p.username
 
-  // Determine the status indicator and label
+  // Determine the status indicator
   const isDebateLive = debate.debateStatus === 'live' || debate.debateStatus === 'paused'
   const statusDot = isDebateLive ? 'bg-red-600 animate-pulse' : 'bg-gray-500'
+
+  // Get debater capacity message
+  const getDebaterCapacityMessage = () => {
+    if (session.type === SessionType.PANEL) {
+      return `Need ${(session.debaterCapacityPanel ?? 0) - debaters.length} more panelist${(session.debaterCapacityPanel ?? 0) - debaters.length === 1 ? '' : 's'}`
+    } else {
+      return `Need ${totalDebaterCapacity - debaters.length} more debater${totalDebaterCapacity - debaters.length === 1 ? '' : 's'}`
+    }
+  }
+
+  // Check if debate can start
+  const canStartDebate =
+    session.type === SessionType.ONE_ON_ONE
+      ? debaters.length === 2
+      : debaters.length >= 2
 
   return (
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
@@ -251,11 +304,11 @@ export default function RoomClient({
               <h1 className="text-xl font-bold debate-title text-white">{session.code}</h1>
               <span
                 className={`debate-badge text-white ${
-                  session.status === 'LIVE'
+                  session.status === SessionStatus.LIVE
                     ? 'bg-red-600'
-                    : session.status === 'WAITING'
+                    : session.status === SessionStatus.WAITING
                     ? 'bg-yellow-500'
-                    : session.status === 'PAUSED'
+                    : session.status === SessionStatus.PAUSED
                     ? 'bg-gray-500'
                     : 'bg-gray-700'
                 }`}
@@ -300,7 +353,7 @@ export default function RoomClient({
                     <div className="flex items-center justify-between">
                       <CardTitle className="debate-title flex items-center text-white">
                         <div className={`w-3 h-3 rounded-full mr-3 ${statusDot}`} />
-                        {session.status === 'WAITING'
+                        {session.status === SessionStatus.WAITING
                           ? 'WAITING TO START'
                           : debate.currentSpeaker
                           ? 'CURRENT SPEAKER'
@@ -315,24 +368,24 @@ export default function RoomClient({
                     </div>
                   </CardHeader>
                   <CardContent className="p-6">
-                    {session.status === 'WAITING' ? (
+                    {session.status === SessionStatus.WAITING ? (
                       <div className="flex flex-col items-center justify-center py-12">
                         <div className="text-center">
                           <Users className="w-16 h-16 text-white/20 mx-auto mb-4" />
                           <p className="text-2xl font-bold debate-title text-white mb-2">WAITING FOR PARTICIPANTS</p>
-                          <p className="text-gray-400 debate-mono mb-2">
-                            {session.participatesIns.length} / {session.max_participants} joined
+                          <p className="text-gray-400 debate-mono mb-6">
+                            {session.participatesIns.length} / {totalDebaterCapacity + session.audienceCapacity + 1} joined
                           </p>
-                          {session.type === 'ONE_ON_ONE' && sessionDebaters.length < 2 && (
+                          {debaters.length < totalDebaterCapacity && (
                             <p className="text-yellow-400 debate-mono text-sm mb-4">
-                              Need {2 - sessionDebaters.length} more debater{sessionDebaters.length === 0 ? 's' : ''} to start
+                              {getDebaterCapacityMessage()}
                             </p>
                           )}
                           {isModeratorOrCreator && (
                             <Button
                               className="debate-button bg-red-600 text-white border-red-700"
                               onClick={handleStartSession}
-                              disabled={session.type === 'ONE_ON_ONE' && sessionDebaters.length < 2}
+                              disabled={!canStartDebate}
                             >
                               START DEBATE
                             </Button>
@@ -341,7 +394,7 @@ export default function RoomClient({
                       </div>
                     ) : (
                       <div className="flex flex-col space-y-4">
-                        {/* Debater display: show only the two debaters side-by-side */}
+                        {/* Debater display */}
                         {isDebateLive && debate.debaters.length === 2 ? (
                           <div className="flex items-center justify-center gap-6">
                             {debate.debaters.map((d, i) => {
@@ -378,10 +431,10 @@ export default function RoomClient({
                               )
                             })}
                           </div>
-                        ) : sessionDebaters.length > 0 ? (
-                          <div className="flex items-center justify-center gap-6">
-                            {sessionDebaters.map((p, i) => (
-                              <div key={p.participant_id} className="flex items-center space-x-3 p-3 border-2 border-white/20">
+                        ) : debaters.length > 0 ? (
+                          <div className="flex items-center justify-center gap-6 flex-wrap">
+                            {debaters.map((p, i) => (
+                              <div key={p.userId} className="flex items-center space-x-3 p-3 border-2 border-white/20">
                                 <div
                                   className={`w-14 h-14 border-2 border-black flex items-center justify-center text-white font-bold text-lg ${
                                     i === 0
@@ -389,14 +442,14 @@ export default function RoomClient({
                                       : 'bg-gradient-to-br from-blue-600 to-blue-800'
                                   }`}
                                 >
-                                  {getInitials(displayName(p.participant))}
+                                  {getInitials(displayName(p.user))}
                                 </div>
                                 <div>
                                   <h3 className="text-lg font-bold debate-title text-white">
-                                    {displayName(p.participant)}
+                                    {displayName(p.user)}
                                   </h3>
                                   <span className="debate-badge bg-yellow-400 text-black text-xs">
-                                    {p.role}
+                                    {p.sessionRole}
                                   </span>
                                 </div>
                               </div>
@@ -482,21 +535,81 @@ export default function RoomClient({
                   <CardHeader className="border-b-2 border-white/20">
                     <CardTitle className="debate-title flex items-center text-white">
                       <Users className="w-4 h-4 mr-2" />
-                      AUDIENCE ({audience.length})
+                      AUDIENCE ({audience.length} / {session.audienceCapacity})
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-4">
-                    {/* Upgrade to debater button for audience members */}
                     {canUpgradeToDebater && (
                       <div className="mb-4">
-                        <Button
-                          className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
-                          onClick={handleUpgradeToDebater}
-                          disabled={isJoining}
-                        >
-                          <Swords className="w-4 h-4 mr-2" />
-                          {isJoining ? 'JOINING...' : 'BECOME A DEBATER'}
-                        </Button>
+                        {session.type === SessionType.PANEL ? (
+                          <Button
+                            className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                            onClick={() => handleUpgradeToDebater(false)}
+                            disabled={isJoining}
+                          >
+                            <Swords className="w-4 h-4 mr-2" />
+                            {isJoining ? 'JOINING...' : 'JOIN AS PANELIST'}
+                          </Button>
+                        ) : (
+                          <div className="space-y-2">
+                            {!showDebaterOptions ? (
+                              <Button
+                                className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                                onClick={() => setShowDebaterOptions(true)}
+                                disabled={isJoining}
+                              >
+                                <Swords className="w-4 h-4 mr-2" />
+                                {isJoining ? 'JOINING...' : 'BECOME A DEBATER'}
+                              </Button>
+                            ) : (
+                              <>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <Button
+                                    className="debate-button bg-red-600 text-white border-red-700 font-bold text-sm"
+                                    onClick={() => handleUpgradeToDebater(true)}
+                                    disabled={isJoining || proponentsFull}
+                                  >
+                                    {isJoining ? (
+                                      <>
+                                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                        JOINING...
+                                      </>
+                                    ) : proponentsFull ? (
+                                      'PROPONENT FULL'
+                                    ) : (
+                                      'JOIN AS PROPONENT'
+                                    )}
+                                  </Button>
+                                  <Button
+                                    className="debate-button bg-blue-600 text-white border-blue-700 font-bold text-sm"
+                                    onClick={() => handleUpgradeToDebater(false)}
+                                    disabled={isJoining || opponentsFull}
+                                  >
+                                    {isJoining ? (
+                                      <>
+                                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                        JOINING...
+                                      </>
+                                    ) : opponentsFull ? (
+                                      'OPPONENT FULL'
+                                    ) : (
+                                      'JOIN AS OPPONENT'
+                                    )}
+                                  </Button>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="debate-button w-full text-xs"
+                                  onClick={() => setShowDebaterOptions(false)}
+                                  disabled={isJoining}
+                                >
+                                  CANCEL
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                     {audience.length === 0 ? (
@@ -505,17 +618,17 @@ export default function RoomClient({
                       <div className="grid grid-cols-4 gap-3">
                         {audience.map((person, index) => (
                           <motion.div
-                            key={person.participant_id}
+                            key={person.userId}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: index * 0.1 }}
                             className="text-center p-3 border-2 border-white/20 hover:border-red-600 transition-colors cursor-pointer"
                           >
                             <div className="w-12 h-12 bg-gray-600 text-white font-bold text-sm flex items-center justify-center mx-auto mb-2 border-2 border-black">
-                              {getInitials(displayName(person.participant))}
+                              {getInitials(displayName(person.user))}
                             </div>
                             <p className="text-xs debate-mono font-medium truncate text-white">
-                              {displayName(person.participant)}
+                              {displayName(person.user)}
                             </p>
                             <p className="text-xs debate-mono text-gray-400">#{index + 1}</p>
                           </motion.div>
@@ -545,11 +658,11 @@ export default function RoomClient({
                     <div className="flex-1">
                       <p className="font-medium debate-text text-white">{displayName(session.moderator)}</p>
                       <p className="text-xs debate-mono text-gray-400">
-                        {session.status === 'LIVE' ? 'Active' : session.status}
+                        {session.status === SessionStatus.LIVE ? 'Active' : session.status}
                       </p>
                     </div>
                   </div>
-                  {isModeratorOrCreator && session.status !== 'WAITING' && session.status !== 'ENDED' && (
+                  {isModeratorOrCreator && session.status !== SessionStatus.WAITING && session.status !== SessionStatus.ENDED && (
                     <div className="grid grid-cols-2 gap-2">
                       <Button
                         variant="outline"
@@ -582,7 +695,7 @@ export default function RoomClient({
                 </CardContent>
               </Card>
 
-              {/* Live Transcript placeholder */}
+              {/* Live Transcript */}
               <Card className="debate-card border-2 flex-1">
                 <CardHeader className="border-b-2 border-white/20">
                   <CardTitle className="debate-title flex items-center text-white">
@@ -608,19 +721,19 @@ export default function RoomClient({
                 <CardContent className="p-4">
                   <div className="space-y-3">
                     {session.participatesIns.map((person) => (
-                      <div key={person.participant_id} className="flex items-center justify-between">
+                      <div key={person.userId} className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <div className={`w-2 h-2 rounded-full ${
-                            person.role === 'CREATOR' ? 'bg-yellow-400' :
-                            person.role === 'MODERATOR' ? 'bg-blue-400' :
-                            person.role === 'DEBATER' ? 'bg-red-400' : 'bg-gray-400'
+                            person.sessionRole === SessionRole.HOST ? 'bg-yellow-400' :
+                            person.sessionRole === SessionRole.MODERATOR ? 'bg-blue-400' :
+                            person.sessionRole === SessionRole.DEBATER ? 'bg-red-400' : 'bg-gray-400'
                           }`} />
                           <span className="text-sm debate-mono truncate pr-2 text-white">
-                            {displayName(person.participant)}
+                            {displayName(person.user)}
                           </span>
                         </div>
                         <span className="text-xs debate-mono text-gray-400">
-                          {person.role}
+                          {person.sessionRole}
                         </span>
                       </div>
                     ))}
