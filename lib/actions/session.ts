@@ -150,7 +150,7 @@ export async function getSessionsByFilters(filters?: {
         orderBy: { created_at: "desc" },
     })
 
-    return sessions
+    return sessions ?? []
 }
 
 export async function getSessionByCode(code: string) {
