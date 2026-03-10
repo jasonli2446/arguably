@@ -83,12 +83,11 @@ export default function RoomClient({
   } = useMediasoup({
     sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
     roomId: session.code,
-    displayName: currentUsername ?? 'Anonymous',
+    displayName: currentUsername,
     enabled: isDebater,
   })
 
   // Debate socket enabled for ALL logged-in users viewing the room
-  // so non-participants can notify others when they join
   const debate = useDebateState({
     sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
     roomId: session.code,
@@ -183,60 +182,15 @@ export default function RoomClient({
       ? debate.timeRemaining
       : session.turnLength
 
-  // Auto-join as audience when a logged-in non-participant views the room
+  // Timer countdown
   useEffect(() => {
-    if (!currentUserId || isParticipant) return
-
-    let cancelled = false
-    async function autoJoin() {
-      try {
-        await joinSession(session.id)
-        if (!cancelled) {
-          debate.notifyParticipantChanged()
-          router.refresh()
-        }
-      } catch (err) {
-        console.error('Auto-join failed:', err)
-      }
+    if (!isPaused && session.status === SessionStatus.LIVE) {
+      const interval = setInterval(() => {
+        setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0))
+      }, 1000)
+      return () => clearInterval(interval)
     }
-    autoJoin()
-    return () => { cancelled = true }
-  }, [currentUserId, isParticipant, session.id, debate, router])
-
-  // Clean up DB on tab close / navigate away
-  useEffect(() => {
-    if (!isParticipant) return
-
-    const handleBeforeUnload = () => {
-      navigator.sendBeacon(
-        '/api/leave-session',
-        new Blob([JSON.stringify({ sessionId: session.id })], { type: 'application/json' })
-      )
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [isParticipant, session.id])
-
-  const sessionDebaters = session.participatesIns.filter(
-    (p) => p.role === 'DEBATER' || p.role === 'CREATOR'
-  )
-  const audience = session.participatesIns.filter((p) => p.role === 'AUDIENCE')
-
-  // Check if room can accept another debater (ONE_ON_ONE with < 2 debater-role participants)
-  const canJoinAsDebater =
-    session.type === 'ONE_ON_ONE' && sessionDebaters.length < 2
-
-  // Current user is audience and could become a debater
-  const canUpgradeToDebater =
-    currentRole === 'AUDIENCE' && canJoinAsDebater
-
-  // Use hook's timer when debate is active, otherwise show session turn_length
-  const displayTime =
-    debate.debateStatus === 'live' || debate.debateStatus === 'paused'
-      ? debate.timeRemaining
-      : session.turn_length
-  const isPaused = debate.debateStatus === 'paused'
+  }, [isPaused, session.status])
 
   async function handleLeave() {
     disconnectSfu()

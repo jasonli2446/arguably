@@ -290,69 +290,6 @@ export async function joinSessionAsDebater(sessionId: string, isProponent: boole
     }
 }
 
-export async function joinSessionAsDebater(sessionId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: {
-      status: true,
-      type: true,
-      max_participants: true,
-      _count: { select: { participatesIns: { where: { left_at: null } } } },
-      participatesIns: {
-        where: { left_at: null, role: { in: ["DEBATER", "CREATOR"] } },
-        select: { participant_id: true },
-      },
-    },
-  })
-
-  if (!session) throw new Error("Session not found")
-  if (session.status === "ENDED") throw new Error("Session has ended")
-  if (session.type !== "ONE_ON_ONE") throw new Error("Only one-on-one debates support join as debater")
-
-  // Count existing debaters (CREATOR + DEBATER roles)
-  if (session.participatesIns.length >= 2) {
-    throw new Error("Debate already has 2 debaters")
-  }
-
-  if (session._count.participatesIns >= session.max_participants) {
-    throw new Error("Session is full")
-  }
-
-  // Check for existing participation (re-join case)
-  const existing = await prisma.participatesIn.findUnique({
-    where: {
-      participant_id_session_id: {
-        participant_id: user.id,
-        session_id: sessionId,
-      },
-    },
-  })
-
-  if (existing) {
-    await prisma.participatesIn.update({
-      where: {
-        participant_id_session_id: {
-          participant_id: user.id,
-          session_id: sessionId,
-        },
-      },
-      data: { left_at: null, role: "DEBATER" },
-    })
-  } else {
-    await prisma.participatesIn.create({
-      data: {
-        participant_id: user.id,
-        session_id: sessionId,
-        role: "DEBATER",
-      },
-    })
-  }
-}
-
 export async function leaveSession(sessionId: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
