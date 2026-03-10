@@ -1,4 +1,5 @@
-import { getSessionsByFilters, getSessionCapacity } from '@/lib/actions/session'
+import { getSessionsByFilters } from '@/lib/actions/session'
+import { getSessionCapacity } from '@/lib/utils'
 import BrowseClient from './BrowseClient'
 
 export const dynamic = 'force-dynamic'

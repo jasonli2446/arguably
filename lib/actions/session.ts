@@ -2,43 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
-import { generateRoomCode } from "@/lib/utils"
+import { generateRoomCode, SessionCapacityInfo, getSessionCapacity, getTotalDebaterCapacity } from "@/lib/utils"
 import { redirect } from "next/navigation"
 import { Prisma, SessionRole, SessionStatus, SessionType } from "@/lib/generated/prisma"
-
-// Type for session capacity info to avoid refetching
-interface SessionCapacityInfo {
-    sessionType: SessionType
-    debaterCapacityProponent: number | null
-    debaterCapacityOpponent: number | null
-    debaterCapacityPanel: number | null
-    audienceCapacity: number
-}
-
-/**
- * Calculate total session capacity, +1 for including moderator
- * @param capacityInfo - Object with debater and audience capacity fields
- * @returns Total session capacity
- */
-export function getSessionCapacity(capacityInfo: SessionCapacityInfo): number {
-    if (capacityInfo.sessionType === SessionType.PANEL) {
-        return (capacityInfo.debaterCapacityPanel ?? 0) + capacityInfo.audienceCapacity + 1
-    } 
-    else {
-        return (capacityInfo.debaterCapacityProponent ?? 0) + 
-        (capacityInfo.debaterCapacityOpponent ?? 0) + 
-        capacityInfo.audienceCapacity + 1
-    }
-}
-
-/**
- * Calculate total debater capacity (proponent + opponent)
- * @param capacityInfo - Object with debater capacity fields
- * @returns Total debater capacity
- */
-function getTotalDebaterCapacity(capacityInfo: SessionCapacityInfo): number {
-    return getSessionCapacity(capacityInfo) - capacityInfo.audienceCapacity - 1;
-}
 
 export async function createSession(formData: {
     name: string
