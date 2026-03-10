@@ -35,7 +35,7 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
     notFound()
   }
 
-  // Serialize for client component - NO nullable fields
+  // Serialize for client component
   const serialized = {
     id: session.id,
     code: session.code,
@@ -52,11 +52,13 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
       username: session.host.username,
       realname: session.host.realname || 'Unknown',
     },
-    moderator: {
+    moderator: session.moderator
+    ? {
       id: session.moderator.id,
       username: session.moderator.username,
       realname: session.moderator.realname || 'Unknown',
-    },
+    }
+    : null,
     participatesIns: session.participates_ins.map((p) => ({
       userId: p.user_id,
       sessionRole: p.session_role,

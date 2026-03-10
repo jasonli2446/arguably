@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma"
 import { generateRoomCode } from "@/lib/utils"
 import { redirect } from "next/navigation"
 import { Prisma, SessionRole, SessionStatus, SessionType } from "@/lib/generated/prisma"
-import { get } from "http"
 
 // Type for session capacity info to avoid refetching
 interface SessionCapacityInfo {
@@ -21,7 +20,7 @@ interface SessionCapacityInfo {
  * @param capacityInfo - Object with debater and audience capacity fields
  * @returns Total session capacity
  */
-function getSessionCapacity(capacityInfo: SessionCapacityInfo): number {
+export function getSessionCapacity(capacityInfo: SessionCapacityInfo): number {
     if (capacityInfo.sessionType === SessionType.PANEL) {
         return (capacityInfo.debaterCapacityPanel ?? 0) + capacityInfo.audienceCapacity + 1
     } 
@@ -141,9 +140,9 @@ export async function getSessionsByFilters(filters?: {
         where: sessionsWhere,
         include: {
             // host username
-            host: { select: { username: true } },
+            host: { select: { id: true, username: true, realname: true } },
             // moderator username
-            moderator: { select: { username: true } },
+            moderator: { select: { id: true, username: true, realname: true } },
             // participant count
             _count: { select: { participates_ins: { where: { left_at: null } } } },
         },

@@ -1,37 +1,43 @@
-'use client'
+import { getSessionsByFilters, getSessionCapacity } from '@/lib/actions/session'
+import BrowseClient from './BrowseClient'
 
-import { SessionStatus, SessionType } from '@/lib/generated/prisma'
+export const dynamic = 'force-dynamic'
 
-type Session = {
-  id: string
-  code: string
-  name: string
-  type: SessionType
-  status: SessionStatus
-  createdAt: string
-  debaterCapacityProponent: number | null
-  debaterCapacityOpponent: number | null
-  debaterCapacityPanel: number | null
-  audienceCapacity: number
-  turnLength: number
-  moderator: {
-    username: string
-  } | null
-  _count: {
-    participates_ins: number
-  }
-}
+export default async function BrowsePage() {
+  const sessions = await getSessionsByFilters()
 
-type BrowseClientProps = {
-  sessions: Session[]
-}
+  // Serialize dates for client component
+  const serialized = sessions.map((session) => ({
+    id: session.id,
+    code: session.code,
+    name: session.name,
+    type: session.type,
+    status: session.status,
+    turnLength: session.turn_length,
+    createdAt: session.created_at.toISOString(),
+    sessionCapacity: getSessionCapacity(
+      {
+        sessionType: session.type,
+        debaterCapacityProponent: session.debater_capacity_proponent,
+        debaterCapacityOpponent: session.debater_capacity_opponent,
+        debaterCapacityPanel: session.debater_capacity_panel,
+        audienceCapacity: session.audience_capacity
+      }
+    ),
+    host: {
+      id: session.host.id,
+      username: session.host.username,
+      realname: session.host.realname || 'Unknown',
+    },
+    moderator: session.moderator
+    ? {
+      id: session.moderator.id,
+      username: session.moderator.username,
+      realname: session.moderator.realname || 'Unknown',
+    }
+    : null,
+    _count: { participatesIns: session._count.participates_ins },
+  }))
 
-export default function BrowseClient({ sessions }: BrowseClientProps) {
-  return (
-    <div>
-      {sessions.map((s) => (
-        <div key={s.id}>{s.name}</div>
-      ))}
-    </div>
-  )
+  return <BrowseClient sessions={serialized} />
 }

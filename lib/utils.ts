@@ -24,3 +24,9 @@ export function getInitials(name: string): string {
     .toUpperCase()
     .slice(0, 2)
 }
+
+export const userStub = {
+  id: 'N/A',
+  username: 'N/A',
+  realname: 'N/A',
+}

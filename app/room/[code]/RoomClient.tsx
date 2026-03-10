@@ -25,7 +25,7 @@ import { useDebateState } from '@/hooks/useDebateState'
 import VideoPanel from '@/components/VideoPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { getInitials, formatTime } from '@/lib/utils'
+import { userStub, getInitials, formatTime } from '@/lib/utils'
 import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater } from '@/lib/actions/session'
 import { useRouter } from 'next/navigation'
 import { SessionRole, SessionStatus, SessionType } from '@/lib/generated/prisma'
@@ -42,7 +42,7 @@ interface SessionData {
   debaterCapacityPanel: number | null
   audienceCapacity: number
   host: { id: string; username: string; realname: string }
-  moderator: { id: string; username: string; realname: string }
+  moderator: { id: string; username: string; realname: string } | null
   participatesIns: {
     userId: string
     sessionRole: SessionRole
@@ -271,7 +271,7 @@ export default function RoomClient({
     }
   }
 
-  const displayName = (p: { username: string; realname: string }) =>
+  const displayName = (p: { id: string; username: string; realname: string }) =>
     p.realname || p.username
 
   // Determine the status indicator
@@ -653,10 +653,10 @@ export default function RoomClient({
                 <CardContent className="p-4">
                   <div className="flex items-center space-x-3 mb-4">
                     <div className="w-10 h-10 bg-blue-600 text-white font-bold text-sm flex items-center justify-center border-2 border-black">
-                      {getInitials(displayName(session.moderator))}
+                      {getInitials(displayName(session.moderator ?? userStub))}
                     </div>
                     <div className="flex-1">
-                      <p className="font-medium debate-text text-white">{displayName(session.moderator)}</p>
+                      <p className="font-medium debate-text text-white">{displayName(session.moderator ?? userStub)}</p>
                       <p className="text-xs debate-mono text-gray-400">
                         {session.status === SessionStatus.LIVE ? 'Active' : session.status}
                       </p>

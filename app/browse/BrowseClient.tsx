@@ -1,452 +1,207 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Users, Clock, Settings, Check } from 'lucide-react'
+import { Users, Clock, Zap, TrendingUp, Filter, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import Link from 'next/link'
-import { createSession } from '@/lib/actions/session'
-import { generateRoomCode } from '@/lib/utils'
-import { SessionType } from '@/lib/generated/prisma'
+import FloatingNav from '@/components/FloatingNav'
+import { useRouter } from 'next/navigation'
+import { joinSession } from '@/lib/actions/session'
+import { userStub } from '@/lib/utils'
 
-// Default capacities for each format
-const CAPACITY_PRESETS: Record<SessionType, {
-  debaterCapacityProponent: number | null
-  debaterCapacityOpponent: number | null
-  debaterCapacityPanel: number | null
-  audienceCapacity: number
-}> = {
-  [SessionType.EXPERT_VS_CROWD]: {
-    debaterCapacityProponent: 1,
-    debaterCapacityOpponent: 3,
-    debaterCapacityPanel: null,
-    audienceCapacity: 10,
-  },
-  [SessionType.ONE_ON_ONE]: {
-    debaterCapacityProponent: 1,
-    debaterCapacityOpponent: 1,
-    debaterCapacityPanel: null,
-    audienceCapacity: 10,
-  },
-  [SessionType.TEAM]: {
-    debaterCapacityProponent: 3,
-    debaterCapacityOpponent: 3,
-    debaterCapacityPanel: null,
-    audienceCapacity: 20,
-  },
-  [SessionType.PANEL]: {
-    debaterCapacityProponent: null,
-    debaterCapacityOpponent: null,
-    debaterCapacityPanel: 5,
-    audienceCapacity: 10,
-  },
+interface SessionData {
+  id: string
+  code: string
+  name: string
+  type: string
+  status: string
+  createdAt: string
+  sessionCapacity: number
+  turnLength: number
+  host: {
+    id: string
+    username: string 
+    realname: string
+  }
+  moderator: {
+    id: string
+    username: string 
+    realname: string
+  } | null
+  _count: { participatesIns: number }
 }
 
-interface DebateFormat {
-  type: SessionType
-  title: string
-  description: string
-  icon: React.ComponentType<any>
-  color: string
-  features: string[]
+const TYPE_LABELS: Record<string, string> = {
+  EXPERT_VS_CROWD: 'EXPERT',
+  ONE_ON_ONE: '1v1',
+  TEAM: 'TEAM',
+  PANEL: 'PANEL',
 }
 
-export default function CreateRoom() {
-  const [selectedFormat, setSelectedFormat] = useState<SessionType>(SessionType.EXPERT_VS_CROWD)
-  const [roomName, setRoomName] = useState('')
-  const [turnLength, setTurnLength] = useState('120')
-  
-  // Capacity states
-  const [debaterCapacityProponent, setDebaterCapacityProponent] = useState('1')
-  const [debaterCapacityOpponent, setDebaterCapacityOpponent] = useState('3')
-  const [audienceCapacity, setAudienceCapacity] = useState('10')
-  const [debaterCapacityPanel, setDebaterCapacityPanel] = useState('5')
-  
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [previewCode, setPreviewCode] = useState('ARG-····')
+const STATUS_COLORS: Record<string, string> = {
+  LIVE: 'bg-red-600',
+  WAITING: 'bg-yellow-500',
+  PAUSED: 'bg-gray-500',
+}
 
-  useEffect(() => {
-    setPreviewCode(generateRoomCode())
-  }, [])
+export default function BrowseClient({ sessions }: { sessions: SessionData[] }) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [joiningId, setJoiningId] = useState<string | null>(null)
+  const router = useRouter()
 
-  // Update capacities when format changes
-  useEffect(() => {
-    const preset = CAPACITY_PRESETS[selectedFormat]
-    if (preset) {
-      setDebaterCapacityProponent(preset.debaterCapacityProponent?.toString() || '0')
-      setDebaterCapacityOpponent(preset.debaterCapacityOpponent?.toString() || '0')
-      setAudienceCapacity(preset.audienceCapacity.toString())
-      setDebaterCapacityPanel(preset.debaterCapacityPanel?.toString() || '0')
-    }
-  }, [selectedFormat])
+  const filtered = sessions.filter((s) =>
+    s.name.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
-  const debateFormats: DebateFormat[] = [
-    {
-      type: SessionType.EXPERT_VS_CROWD,
-      title: 'EXPERT vs CROWD',
-      description: 'One expert faces rotating challengers from the audience queue.',
-      icon: Users,
-      color: 'border-red-600 bg-red-950',
-      features: ['Audience queue', 'Dynamic replacement', 'Expert protection']
-    },
-    {
-      type: SessionType.ONE_ON_ONE,
-      title: 'ONE-ON-ONE',
-      description: 'Classic two-person debate with strict turn-taking and time limits.',
-      icon: Users,
-      color: 'border-blue-600 bg-blue-950',
-      features: ['Strict moderation', 'Equal time', 'Direct confrontation']
-    },
-    {
-      type: SessionType.TEAM,
-      title: 'TEAM DEBATE',
-      description: 'Collaborative team competition with coordinated arguments.',
-      icon: Users,
-      color: 'border-green-600 bg-green-950',
-      features: ['Team coordination', 'Shared strategy', 'Collaborative']
-    },
-    {
-      type: SessionType.PANEL,
-      title: 'PANEL DISCUSSION',
-      description: 'Multiple debaters in circular queue with equal time allocation.',
-      icon: Users,
-      color: 'border-purple-600 bg-purple-950',
-      features: ['Equal speaking time', 'Circular queue', 'Multiple perspectives']
-    }
-  ]
+  const liveCount = sessions.filter((s) => s.status === 'LIVE').length
+  const totalParticipants = sessions.reduce((sum, s) => sum + s._count.participatesIns, 0)
 
-  const getCapacityFields = () => {
-    if (selectedFormat === SessionType.PANEL) {
-      return (
-        <div>
-          <label className="block text-sm font-bold debate-mono mb-2 text-white">
-            <Users className="w-4 h-4 inline mr-2" />
-            PANELISTS
-          </label>
-          <Input
-            type="number"
-            min="2"
-            max="20"
-            value={debaterCapacityPanel}
-            onChange={(e) => setDebaterCapacityPanel(e.target.value)}
-            className="debate-input"
-          />
-        </div>
-      )
-    }
-
-    return (
-      <>
-        <div>
-          <label className="block text-sm font-bold debate-mono mb-2 text-white">
-            PROPONENT SLOTS
-          </label>
-          <Input
-            type="number"
-            min="1"
-            max="10"
-            value={debaterCapacityProponent}
-            onChange={(e) => setDebaterCapacityProponent(e.target.value)}
-            className="debate-input"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-bold debate-mono mb-2 text-white">
-            OPPONENT SLOTS
-          </label>
-          <Input
-            type="number"
-            min="0"
-            max="10"
-            value={debaterCapacityOpponent}
-            onChange={(e) => setDebaterCapacityOpponent(e.target.value)}
-            className="debate-input"
-          />
-        </div>
-      </>
-    )
-  }
-
-  const calculateTotalCapacity = () => {
-    const proponent = parseInt(debaterCapacityProponent) || 0
-    const opponent = parseInt(debaterCapacityOpponent) || 0
-    const audience = parseInt(audienceCapacity) || 0
-    const moderator = 1
-
-    if (selectedFormat === SessionType.PANEL) {
-      const panel = parseInt(debaterCapacityPanel) || 0
-      return panel + audience + moderator
-    }
-
-    return proponent + opponent + audience + moderator
-  }
-
-  async function handleCreateRoom() {
-    setError(null)
-
-    // Validation
-    if (!roomName.trim()) {
-      setError('Room name is required')
-      return
-    }
-
-    if (selectedFormat === SessionType.PANEL) {
-      const panelCount = parseInt(debaterCapacityPanel) || 0
-      if (panelCount < 2) {
-        setError('Panel must have at least 2 panelists')
-        return
-      }
-    } else {
-      const proponent = parseInt(debaterCapacityProponent) || 0
-      const opponent = parseInt(debaterCapacityOpponent) || 0
-      if (proponent < 1 || opponent < 0) {
-        setError('Proponent capacity must be at least 1, opponent cannot be negative')
-        return
-      }
-    }
-
-    const audience = parseInt(audienceCapacity) || 0
-    if (audience < 0) {
-      setError('Audience capacity cannot be negative')
-      return
-    }
-
-    setIsSubmitting(true)
-
+  async function handleJoin(session: SessionData) {
+    setJoiningId(session.id)
     try {
-      await createSession({
-        name: roomName,
-        type: selectedFormat,
-        debaterCapacityProponent: selectedFormat === SessionType.PANEL ? null : parseInt(debaterCapacityProponent) || 0,
-        debaterCapacityOpponent: selectedFormat === SessionType.PANEL ? null : parseInt(debaterCapacityOpponent) || 0,
-        debaterCapacityPanel: selectedFormat === SessionType.PANEL ? parseInt(debaterCapacityPanel) || 0 : null,
-        audienceCapacity: parseInt(audienceCapacity) || 0,
-        turnLength: parseInt(turnLength),
-      })
-      // createSession redirects on success
+      await joinSession(session.id)
+      router.push(`/room/${session.code}`)
     } catch (err) {
-      if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err
-      setError(err instanceof Error ? err.message : "Failed to create room")
-      setIsSubmitting(false)
+      console.error('Failed to join:', err)
+      // Navigate anyway — they can still view
+      router.push(`/room/${session.code}`)
     }
   }
 
   return (
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
-      <div className="debate-grid fixed inset-0 opacity-30" />
+      <div className="debate-texture fixed inset-0" />
+      <FloatingNav />
 
-      <header className="relative z-10 border-b-2 border-white/20 bg-gray-900/90 backdrop-blur-sm">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Link href="/">
-                <Button variant="ghost" size="sm" className="debate-button">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  BACK
-                </Button>
-              </Link>
-              <h1 className="text-2xl font-bold debate-title text-white">CREATE DEBATE ROOM</h1>
-            </div>
-            <div className="debate-mono text-sm text-gray-400">
-              STEP 1 OF 2
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="relative z-10 container mx-auto px-6 py-8">
-        <div className="max-w-4xl mx-auto">
+      <main className="relative z-10 pt-32 pb-20">
+        <div className="container mx-auto px-6">
+          {/* Header */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-8"
+            transition={{ duration: 0.6 }}
+            className="mb-12"
           >
-            <div className="bg-gray-900 border-2 border-white/20 p-6 rounded-none">
-              <h2 className="text-xl font-bold debate-title mb-4 text-white">ROOM DETAILS</h2>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-bold debate-mono mb-2 text-white">ROOM NAME</label>
-                  <Input
-                    value={roomName}
-                    onChange={(e) => setRoomName(e.target.value)}
-                    placeholder="Enter debate topic..."
-                    className="debate-input"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold debate-mono mb-2 text-white">ROOM ID (PREVIEW)</label>
-                  <Input
-                    value={previewCode}
-                    disabled
-                    className="debate-input bg-gray-800 text-gray-400 border-white/10"
-                  />
-                </div>
-              </div>
-            </div>
+            <h1 className="text-6xl md:text-7xl font-black text-white mb-4">
+              BROWSE <span className="text-red-400">DEBATES</span>
+            </h1>
+            <p className="text-xl text-gray-300 max-w-2xl">
+              Jump into a live room or spectate from the queue
+            </p>
           </motion.div>
 
+          {/* Filter Bar */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="mb-8"
+            transition={{ delay: 0.2 }}
+            className="mb-8 flex flex-col md:flex-row gap-4"
           >
-            <h2 className="text-xl font-bold debate-title mb-6 text-white">SELECT DEBATE FORMAT</h2>
-            <div className="grid md:grid-cols-2 gap-6">
-              {debateFormats.map((format) => (
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="SEARCH DEBATES..."
+                className="debate-input w-full pl-12"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <Button className="debate-button bg-white text-black border-black">
+              <Filter className="w-4 h-4 mr-2" />
+              FILTER
+            </Button>
+          </motion.div>
+
+          {/* Stats Bar */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12"
+          >
+            {[
+              { label: "LIVE DEBATES", value: String(liveCount), icon: Zap },
+              { label: "PARTICIPANTS", value: String(totalParticipants), icon: Users },
+              { label: "TOTAL ROOMS", value: String(sessions.length), icon: Clock },
+              { label: "FORMATS", value: "4", icon: TrendingUp },
+            ].map((stat, index) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 + index * 0.1 }}
+                className="bg-gray-900 border-2 border-white/20 p-4 text-center"
+              >
+                <stat.icon className="w-6 h-6 text-red-400 mx-auto mb-2" />
+                <div className="text-3xl font-black text-white mb-1">{stat.value}</div>
+                <div className="text-xs debate-mono text-gray-400">{stat.label}</div>
+              </motion.div>
+            ))}
+          </motion.div>
+
+          {/* Debates Grid */}
+          {filtered.length === 0 ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-20"
+            >
+              <p className="text-2xl font-bold debate-title text-gray-500 mb-4">
+                {searchQuery ? 'NO MATCHING DEBATES' : 'NO ACTIVE DEBATES'}
+              </p>
+              <p className="text-gray-400 debate-text">
+                {searchQuery ? 'Try a different search term' : 'Be the first to create one!'}
+              </p>
+            </motion.div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filtered.map((session, index) => (
                 <motion.div
-                  key={format.type}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  key={session.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 + index * 0.1 }}
                 >
-                  <Card
-                    className={`cursor-pointer transition-all border-2 ${
-                      selectedFormat === format.type
-                        ? `${format.color} border-opacity-100`
-                        : 'bg-gray-900 border-white/20 hover:border-white/40'
-                    }`}
-                    onClick={() => setSelectedFormat(format.type)}
-                  >
+                  <Card className="debate-card cursor-pointer h-full">
                     <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className={`w-10 h-10 rounded-md border-2 border-white/20 flex items-center justify-center ${
-                            selectedFormat === format.type ? 'bg-white text-black' : 'bg-gray-800 text-gray-400'
-                          }`}>
-                            {selectedFormat === format.type && <Check className="w-5 h-5" />}
-                          </div>
-                          <div>
-                            <CardTitle className="debate-title text-lg text-white">{format.title}</CardTitle>
-                            <CardDescription className="debate-text mt-1 text-gray-300">
-                              {format.description}
-                            </CardDescription>
-                          </div>
-                        </div>
+                      <div className="flex items-start justify-between mb-3">
+                        <span className={`debate-badge text-white ${STATUS_COLORS[session.status] || 'bg-gray-600'}`}>
+                          {session.status}
+                        </span>
+                        <span className="debate-mono text-xs text-gray-400">
+                          {session.code}
+                        </span>
                       </div>
+                      <CardTitle className="text-xl font-black text-white">
+                        {session.name}
+                      </CardTitle>
+                      <CardDescription className="debate-mono text-sm text-gray-400 mt-2">
+                        {TYPE_LABELS[session.type] || session.type}
+                        <span className="mx-2">·</span>
+                        by {session.moderator?.username || userStub.username}
+                      </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-2">
-                        {format.features.map((feature, index) => (
-                          <div key={index} className="flex items-center space-x-2">
-                            <div className="w-1.5 h-1.5 bg-gray-400 rounded-full" />
-                            <span className="text-xs debate-mono text-gray-300">{feature}</span>
-                          </div>
-                        ))}
+                      <div className="flex items-center gap-2 text-gray-300">
+                        <Users className="w-4 h-4" />
+                        <span className="font-bold">{session._count.participatesIns}</span>
+                        <span className="text-sm">/ {session.sessionCapacity}</span>
                       </div>
+                      <Button
+                        className="debate-button bg-red-600 text-white border-black w-full mt-4"
+                        onClick={() => handleJoin(session)}
+                        disabled={joiningId === session.id}
+                      >
+                        {joiningId === session.id ? 'JOINING...' : 'JOIN DEBATE'}
+                      </Button>
                     </CardContent>
                   </Card>
                 </motion.div>
               ))}
             </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="mb-8"
-          >
-            <div className="bg-gray-900 border-2 border-white/20 p-6 rounded-none">
-              <h2 className="text-xl font-bold debate-title mb-6 text-white">CAPACITY & SETTINGS</h2>
-              
-              <div className="mb-6">
-                <h3 className="text-sm font-bold debate-mono mb-4 text-gray-300">DEBATER CAPACITY</h3>
-                <div className="grid md:grid-cols-3 gap-6">
-                  {getCapacityFields()}
-                  <div>
-                    <label className="block text-sm font-bold debate-mono mb-2 text-white">
-                      <Users className="w-4 h-4 inline mr-2" />
-                      AUDIENCE SLOTS
-                    </label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={audienceCapacity}
-                      onChange={(e) => setAudienceCapacity(e.target.value)}
-                      className="debate-input"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-800/50 border border-white/10 p-4 mb-6 rounded">
-                <div className="text-xs debate-mono text-gray-400">
-                  Total Capacity (incl. moderator): <span className="text-white font-bold">{calculateTotalCapacity()} slots</span>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-bold debate-mono mb-4 text-gray-300">TIMER SETTINGS</h3>
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-bold debate-mono mb-2 text-white">
-                      <Clock className="w-4 h-4 inline mr-2" />
-                      TURN LENGTH
-                    </label>
-                    <select
-                      value={turnLength}
-                      onChange={(e) => setTurnLength(e.target.value)}
-                      className="debate-input w-full"
-                    >
-                      <option value="60">60 seconds</option>
-                      <option value="120">120 seconds</option>
-                      <option value="180">180 seconds</option>
-                      <option value="300">5 minutes</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold debate-mono mb-2 text-white">
-                      <Settings className="w-4 h-4 inline mr-2" />
-                      MODERATION
-                    </label>
-                    <select className="debate-input w-full">
-                      <option>Auto-moderate</option>
-                      <option>Manual moderation</option>
-                      <option>No moderation</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 bg-red-600/10 border-2 border-red-600/30 p-4"
-            >
-              <p className="text-sm debate-mono text-red-400">{error}</p>
-            </motion.div>
           )}
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="flex justify-between items-center"
-          >
-            <div className="debate-mono text-sm text-gray-400">
-              Room ID: <span className="font-bold text-white">{previewCode}</span>
-            </div>
-            <div className="space-x-4">
-              <Button variant="outline" className="debate-button">
-                SAVE DRAFT
-              </Button>
-              <Button
-                className="debate-button variant-debate"
-                onClick={handleCreateRoom}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'CREATING...' : 'CREATE ROOM'}
-                {!isSubmitting && <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />}
-              </Button>
-            </div>
-          </motion.div>
         </div>
       </main>
     </div>
