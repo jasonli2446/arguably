@@ -12,8 +12,8 @@ export async function POST(req: NextRequest) {
 
   await prisma.participatesIn.update({
     where: {
-      participant_id_session_id: {
-        participant_id: user.id,
+      user_id_session_id: {
+        user_id: user.id,
         session_id: sessionId,
       },
     },

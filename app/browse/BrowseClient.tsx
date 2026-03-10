@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import FloatingNav from '@/components/FloatingNav'
 import { useRouter } from 'next/navigation'
 import { joinSession } from '@/lib/actions/session'
+import { userStub } from '@/lib/utils'
 
 interface SessionData {
   id: string
@@ -15,10 +16,19 @@ interface SessionData {
   name: string
   type: string
   status: string
-  created_at: string
-  max_participants: number
-  turn_length: number
-  moderator: { username: string }
+  createdAt: string
+  sessionCapacity: number
+  turnLength: number
+  host: {
+    id: string
+    username: string 
+    realname: string
+  }
+  moderator: {
+    id: string
+    username: string 
+    realname: string
+  } | null
   _count: { participatesIns: number }
 }
 
@@ -170,14 +180,14 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
                       <CardDescription className="debate-mono text-sm text-gray-400 mt-2">
                         {TYPE_LABELS[session.type] || session.type}
                         <span className="mx-2">·</span>
-                        by {session.moderator.username}
+                        by {session.moderator?.username || userStub.username}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center gap-2 text-gray-300">
                         <Users className="w-4 h-4" />
                         <span className="font-bold">{session._count.participatesIns}</span>
-                        <span className="text-sm">/ {session.max_participants}</span>
+                        <span className="text-sm">/ {session.sessionCapacity}</span>
                       </div>
                       <Button
                         className="debate-button bg-red-600 text-white border-black w-full mt-4"

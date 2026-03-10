@@ -12,17 +12,20 @@ import { generateRoomCode } from '@/lib/utils'
 import { SessionType } from '@/lib/generated/prisma'
 
 const FORMAT_MAP: Record<string, SessionType> = {
-  'expert-crowd': 'EXPERT_VS_CROWD',
-  'one-on-one': 'ONE_ON_ONE',
-  'team': 'TEAM',
-  'panel': 'PANEL',
+  'expert-crowd': SessionType.EXPERT_VS_CROWD,
+  'one-on-one': SessionType.ONE_ON_ONE,
+  'team': SessionType.TEAM,
+  'panel': SessionType.PANEL,
 }
 
 export default function CreateRoom() {
   const [selectedFormat, setSelectedFormat] = useState<string>('expert-crowd')
   const [roomName, setRoomName] = useState('')
   const [turnLength, setTurnLength] = useState('120')
-  const [maxParticipants, setMaxParticipants] = useState('10')
+  const [debaterCapacityProponent, setDebaterCapacityProponent] = useState('1')
+  const [debaterCapacityOpponent, setDebaterCapacityOpponent] = useState('1')
+  const [debaterCapacityPanel, setDebaterCapacityPanel] = useState('5')
+  const [audienceCapacity, setAudienceCapacity] = useState('10')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [previewCode, setPreviewCode] = useState('ARG-····')
@@ -74,7 +77,10 @@ export default function CreateRoom() {
       await createSession({
         name: roomName,
         type: FORMAT_MAP[selectedFormat],
-        maxParticipants: parseInt(maxParticipants),
+        debaterCapacityProponent: parseInt(debaterCapacityProponent),
+        debaterCapacityOpponent: parseInt(debaterCapacityOpponent),
+        debaterCapacityPanel: parseInt(debaterCapacityPanel),
+        audienceCapacity: parseInt(audienceCapacity),
         turnLength: parseInt(turnLength),
       })
       // createSession redirects on success, so we only reach here on error
@@ -221,21 +227,46 @@ export default function CreateRoom() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-bold debate-mono mb-2 text-white">
-                    <Users className="w-4 h-4 inline mr-2" />
-                    MAX PARTICIPANTS
-                  </label>
+                <label className="block text-sm font-bold debate-mono mb-2 text-white">
+                  <Users className="w-4 h-4 inline mr-2" />
+                  DEBATERS
+                </label>
+
+                {selectedFormat === 'panel' ? (
                   <select
-                    value={maxParticipants}
-                    onChange={(e) => setMaxParticipants(e.target.value)}
+                    value={debaterCapacityPanel}
+                    onChange={(e) => setDebaterCapacityPanel(e.target.value)}
                     className="debate-input w-full"
                   >
-                    <option value="4">4 participants</option>
-                    <option value="10">10 participants</option>
-                    <option value="20">20 participants</option>
-                    <option value="50">50 participants</option>
+                    <option value="3">3 panelists</option>
+                    <option value="5">5 panelists</option>
+                    <option value="7">7 panelists</option>
+                    <option value="9">9 panelists</option>
                   </select>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={debaterCapacityProponent}
+                      onChange={(e) => setDebaterCapacityProponent(e.target.value)}
+                      className="debate-input w-full"
+                    >
+                      <option value="1">1 Proponent</option>
+                      <option value="2">2 Proponents</option>
+                      <option value="3">3 Proponents</option>
+                    </select>
+
+                    <select
+                      value={debaterCapacityOpponent}
+                      onChange={(e) => setDebaterCapacityOpponent(e.target.value)}
+                      className="debate-input w-full"
+                    >
+                      <option value="1">1 Opponent</option>
+                      <option value="2">2 Opponents</option>
+                      <option value="3">3 Opponents</option>
+                    </select>
+                  </div>
+                )}
+              </div>
                 <div>
                   <label className="block text-sm font-bold debate-mono mb-2 text-white">
                     <Settings className="w-4 h-4 inline mr-2" />

@@ -1,4 +1,5 @@
 import { getSessionByCode } from '@/lib/actions/session'
+import { SessionRole } from '@/lib/generated/prisma'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import RoomClient from './RoomClient'
@@ -14,12 +15,25 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const currentUserId = user?.id ?? null
-  const currentParticipant = session.participatesIns.find(
-    (p) => p.participant_id === currentUserId
+  if (!user?.id) {
+    notFound() // Ensure user is authenticated
+  }
+
+  const currentUserId = user.id
+  const currentUser = session.participates_ins.find(
+    (u) => u.user_id === currentUserId
   )
-  const currentRole = currentParticipant?.role ?? null
-  const currentUsername = currentParticipant?.participant?.username ?? null
+  const currentRole: SessionRole = currentUser?.session_role ?? SessionRole.AUDIENCE
+  const currentUsername = currentUser?.user?.username ?? 'Anonymous'
+
+  // Ensure moderator and host exist
+  if (!session.moderator) {
+    notFound()
+  }
+
+  if (!session.host) {
+    notFound()
+  }
 
   // Serialize for client component
   const serialized = {
@@ -28,13 +42,31 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
     name: session.name,
     type: session.type,
     status: session.status,
-    turn_length: session.turn_length,
-    max_participants: session.max_participants,
-    moderator: session.moderator,
-    participatesIns: session.participatesIns.map((p) => ({
-      participant_id: p.participant_id,
-      role: p.role,
-      participant: p.participant,
+    turnLength: session.turn_length,
+    debaterCapacityProponent: session.debater_capacity_proponent,
+    debaterCapacityOpponent: session.debater_capacity_opponent,
+    debaterCapacityPanel: session.debater_capacity_panel,
+    audienceCapacity: session.audience_capacity,
+    host: {
+      id: session.host.id,
+      username: session.host.username,
+      realname: session.host.realname || 'Unknown',
+    },
+    moderator: session.moderator
+    ? {
+      id: session.moderator.id,
+      username: session.moderator.username,
+      realname: session.moderator.realname || 'Unknown',
+    }
+    : null,
+    participatesIns: session.participates_ins.map((p) => ({
+      userId: p.user_id,
+      sessionRole: p.session_role,
+      user: {
+        id: p.user.id,
+        username: p.user.username,
+        realname: p.user.realname || 'Unknown',
+      },
     })),
   }
 

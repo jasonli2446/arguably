@@ -1,23 +1,43 @@
-import { listSessions } from '@/lib/actions/session'
+import { getSessionsByFilters } from '@/lib/actions/session'
+import { getSessionCapacity } from '@/lib/utils'
 import BrowseClient from './BrowseClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function BrowsePage() {
-  const sessions = await listSessions()
+  const sessions = await getSessionsByFilters()
 
   // Serialize dates for client component
-  const serialized = sessions.map((s) => ({
-    id: s.id,
-    code: s.code,
-    name: s.name,
-    type: s.type,
-    status: s.status,
-    created_at: s.created_at.toISOString(),
-    max_participants: s.max_participants,
-    turn_length: s.turn_length,
-    moderator: s.moderator,
-    _count: s._count,
+  const serialized = sessions.map((session) => ({
+    id: session.id,
+    code: session.code,
+    name: session.name,
+    type: session.type,
+    status: session.status,
+    turnLength: session.turn_length,
+    createdAt: session.created_at.toISOString(),
+    sessionCapacity: getSessionCapacity(
+      {
+        sessionType: session.type,
+        debaterCapacityProponent: session.debater_capacity_proponent,
+        debaterCapacityOpponent: session.debater_capacity_opponent,
+        debaterCapacityPanel: session.debater_capacity_panel,
+        audienceCapacity: session.audience_capacity
+      }
+    ),
+    host: {
+      id: session.host.id,
+      username: session.host.username,
+      realname: session.host.realname || 'Unknown',
+    },
+    moderator: session.moderator
+    ? {
+      id: session.moderator.id,
+      username: session.moderator.username,
+      realname: session.moderator.realname || 'Unknown',
+    }
+    : null,
+    _count: { participatesIns: session._count.participates_ins },
   }))
 
   return <BrowseClient sessions={serialized} />
