@@ -306,6 +306,34 @@ export async function leaveSession(sessionId: string) {
     })
 }
 
+export async function kickParticipant(sessionId: string, targetUserId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+
+  // Verify caller is moderator or host
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { host_id: true, moderator_id: true },
+  })
+  if (!session) throw new Error("Session not found")
+  if (session.host_id !== user.id && session.moderator_id !== user.id) {
+    throw new Error("Only moderators or hosts can kick participants")
+  }
+  // Cannot kick yourself
+  if (targetUserId === user.id) throw new Error("Cannot kick yourself")
+
+  await prisma.participatesIn.update({
+    where: {
+      user_id_session_id: {
+        user_id: targetUserId,
+        session_id: sessionId,
+      },
+    },
+    data: { left_at: new Date() },
+  })
+}
+
 export async function updateSessionStatus(sessionId: string, status: SessionStatus) {
     
     const supabase = await createClient()
