@@ -79,4 +79,18 @@ model Session {
   host             User             @relation("HostToSession", fields: [host_id], references: [id])
   moderator        User?            @relation("ModeratorToSession", fields: [moderator_id], references: [id])
   participates_ins ParticipatesIn[]
+  debate_state     DebateState?
+}
+
+model DebateState {
+  id                    String  @id @default(cuid())
+  session_id            String  @unique
+  debater_order         Json
+  current_index         Int     @default(0)
+  turn_length           Int
+  turn_ends_at          Float?
+  is_paused             Boolean @default(false)
+  paused_time_remaining Float   @default(0)
+
+  session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
 }
