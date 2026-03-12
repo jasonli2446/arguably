@@ -306,6 +306,39 @@ export async function leaveSession(sessionId: string) {
     })
 }
 
+export async function assignModerator(sessionId: string, targetUserId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { host_id: true, moderator_id: true },
+  })
+  if (!session) throw new Error("Session not found")
+  if (session.host_id !== user.id) throw new Error("Only the host can assign a moderator")
+  if (targetUserId === user.id) throw new Error("Host cannot assign themselves as moderator")
+
+  // Demote previous moderator back to AUDIENCE (if any)
+  if (session.moderator_id && session.moderator_id !== targetUserId) {
+    await prisma.participatesIn.updateMany({
+      where: { session_id: sessionId, user_id: session.moderator_id },
+      data: { session_role: SessionRole.AUDIENCE },
+    })
+  }
+
+  await prisma.$transaction([
+    prisma.session.update({
+      where: { id: sessionId },
+      data: { moderator_id: targetUserId },
+    }),
+    prisma.participatesIn.update({
+      where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
+      data: { session_role: SessionRole.MODERATOR },
+    }),
+  ])
+}
+
 export async function kickParticipant(sessionId: string, targetUserId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

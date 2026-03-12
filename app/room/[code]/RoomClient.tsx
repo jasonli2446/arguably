@@ -27,7 +27,7 @@ import VideoPanel from '@/components/VideoPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { userStub, getInitials, formatTime } from '@/lib/utils'
-import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater, kickParticipant } from '@/lib/actions/session'
+import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater, kickParticipant, assignModerator } from '@/lib/actions/session'
 import { useRouter } from 'next/navigation'
 import { SessionRole, SessionStatus, SessionType } from '@/lib/generated/prisma'
 
@@ -69,6 +69,7 @@ export default function RoomClient({
   const [showDebaterOptions, setShowDebaterOptions] = useState(false)
 
   const isModeratorOrCreator = currentRole === SessionRole.MODERATOR || currentRole === SessionRole.HOST
+  const isHost = currentRole === SessionRole.HOST
   const isParticipant = currentRole !== null
   const isDebater = currentRole === SessionRole.DEBATER || currentRole === SessionRole.HOST
 
@@ -267,6 +268,15 @@ export default function RoomClient({
     } finally {
       setIsJoining(false)
       setShowDebaterOptions(false)
+    }
+  }
+
+  async function handleAssignModerator(userId: string) {
+    try {
+      await assignModerator(session.id, userId)
+      router.refresh()
+    } catch (err) {
+      console.error('Failed to assign moderator:', err)
     }
   }
 
@@ -759,10 +769,19 @@ export default function RoomClient({
                           <span className="text-xs debate-mono text-gray-400">
                             {person.sessionRole}
                           </span>
+                          {isHost && person.userId !== currentUserId && person.sessionRole !== SessionRole.MODERATOR && (
+                            <button
+                              onClick={() => handleAssignModerator(person.userId)}
+                              className="text-blue-400 hover:text-blue-300 text-xs opacity-60 hover:opacity-100"
+                              title="Assign as moderator"
+                            >
+                              MOD
+                            </button>
+                          )}
                           {isModeratorOrCreator && person.userId !== currentUserId && (
                             <button
                               onClick={() => handleKick(person.userId)}
-                              className="text-red-400 hover:text-red-300 text-xs ml-2 opacity-60 hover:opacity-100"
+                              className="text-red-400 hover:text-red-300 text-xs ml-1 opacity-60 hover:opacity-100"
                               title="Kick participant"
                             >
                               ✕
