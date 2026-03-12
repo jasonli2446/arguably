@@ -27,7 +27,7 @@ import VideoPanel from '@/components/VideoPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { userStub, getInitials, formatTime } from '@/lib/utils'
-import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater } from '@/lib/actions/session'
+import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater, kickParticipant } from '@/lib/actions/session'
 import { useRouter } from 'next/navigation'
 import { SessionRole, SessionStatus, SessionType } from '@/lib/generated/prisma'
 
@@ -278,6 +278,16 @@ export default function RoomClient({
     }
   }
 
+  async function handleKick(userId: string) {
+    try {
+      await kickParticipant(session.id, userId)
+      debate.notifyParticipantChanged()
+      router.refresh()
+    } catch (err) {
+      console.error('Failed to kick participant:', err)
+    }
+  }
+
   const displayName = (p: { id: string; username: string; realname: string }) =>
     p.realname || p.username
 
@@ -299,6 +309,13 @@ export default function RoomClient({
     session.type === SessionType.ONE_ON_ONE
       ? debaters.length === 2
       : debaters.length >= 2
+
+  // Timer color based on remaining time
+  const timerColorClass = displayTime <= 10
+    ? 'text-red-500 animate-pulse'
+    : displayTime <= 30
+    ? 'text-orange-400'
+    : 'text-white'
 
   return (
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
@@ -366,7 +383,7 @@ export default function RoomClient({
                           ? 'CURRENT SPEAKER'
                           : 'DEBATE STAGE'}
                       </CardTitle>
-                      <div className="flex items-center space-x-2 text-white">
+                      <div className={`flex items-center space-x-2 ${timerColorClass}`}>
                         <Clock className="w-4 h-4" />
                         <span className="debate-mono font-bold">
                           {formatTime(displayTime)}
@@ -739,9 +756,20 @@ export default function RoomClient({
                             {displayName(person.user)}
                           </span>
                         </div>
-                        <span className="text-xs debate-mono text-gray-400">
-                          {person.sessionRole}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs debate-mono text-gray-400">
+                            {person.sessionRole}
+                          </span>
+                          {isModeratorOrCreator && person.userId !== currentUserId && (
+                            <button
+                              onClick={() => handleKick(person.userId)}
+                              className="text-red-400 hover:text-red-300 text-xs ml-2 opacity-60 hover:opacity-100"
+                              title="Kick participant"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
