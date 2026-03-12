@@ -21,7 +21,8 @@ import {
   Swords
 } from 'lucide-react'
 import { useMediasoup } from '@/hooks/useMediasoup'
-import { useDebateState } from '@/hooks/useDebateState'
+import { useDebateChannel } from '@/hooks/useDebateChannel'
+import { createClient } from '@/lib/supabase/client'
 import VideoPanel from '@/components/VideoPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -87,20 +88,29 @@ export default function RoomClient({
     enabled: isDebater,
   })
 
-  // Debate socket enabled for ALL logged-in users viewing the room
-  const debate = useDebateState({
-    sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
-    roomId: session.code,
+  const debate = useDebateChannel({
+    sessionId: session.id,
     userId: currentUserId,
-    enabled: !!currentUserId,
   })
 
-  // Refresh page when another participant joins/leaves
+  // Refresh page when participants change (via Supabase Realtime)
   useEffect(() => {
-    return debate.onParticipantChanged(() => {
-      router.refresh()
-    })
-  }, [debate.onParticipantChanged, router])
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`participants:${session.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ParticipatesIn',
+          filter: `session_id=eq.${session.id}`,
+        },
+        () => { router.refresh() },
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [session.id, router])
 
   // Auto-join as audience when a logged-in non-participant views the room
   useEffect(() => {
@@ -111,7 +121,6 @@ export default function RoomClient({
       try {
         await joinSession(session.id)
         if (!cancelled) {
-          debate.notifyParticipantChanged()
           router.refresh()
         }
       } catch (err) {
@@ -120,7 +129,7 @@ export default function RoomClient({
     }
     autoJoin()
     return () => { cancelled = true }
-  }, [currentUserId, isParticipant, session.id, debate, router])
+  }, [currentUserId, isParticipant, session.id, router])
 
   // Clean up DB on tab close / navigate away
   useEffect(() => {
@@ -196,7 +205,6 @@ export default function RoomClient({
     disconnectSfu()
     try {
       await leaveSession(session.id)
-      debate.notifyParticipantChanged()
       router.push('/browse')
     } catch (err) {
       console.error('Failed to leave:', err)
@@ -253,7 +261,6 @@ export default function RoomClient({
     setIsJoining(true)
     try {
       await joinSessionAsDebater(session.id, isProponent)
-      debate.notifyParticipantChanged()
       router.refresh()
     } catch (err) {
       console.error('Failed to upgrade to debater:', err)
