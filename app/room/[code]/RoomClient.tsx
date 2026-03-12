@@ -281,7 +281,6 @@ export default function RoomClient({
   async function handleKick(userId: string) {
     try {
       await kickParticipant(session.id, userId)
-      debate.notifyParticipantChanged()
       router.refresh()
     } catch (err) {
       console.error('Failed to kick participant:', err)
