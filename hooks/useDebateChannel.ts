@@ -42,6 +42,7 @@ export function useDebateChannel({ sessionId, userId }: UseDebateChannelOptions)
   const [debateStatus, setDebateStatus] = useState<DebateStatus>('idle')
   const [timeRemaining, setTimeRemaining] = useState(0)
   const timerFiredRef = useRef(false)
+  const warnedRef = useRef<Set<number>>(new Set())
 
   const currentSpeaker = debaters[currentIndex] ?? null
   const isMyTurn = currentSpeaker?.userId === userId
@@ -53,6 +54,7 @@ export function useDebateChannel({ sessionId, userId }: UseDebateChannelOptions)
     setIsPaused(row.is_paused)
     setDebateStatus(row.is_paused ? 'paused' : 'live')
     timerFiredRef.current = false
+    warnedRef.current = new Set()
 
     if (row.is_paused) {
       setTimeRemaining(Math.ceil(row.paused_time_remaining))
@@ -100,9 +102,33 @@ export function useDebateChannel({ sessionId, userId }: UseDebateChannelOptions)
   useEffect(() => {
     if (debateStatus !== 'live' || isPaused || turnEndsAt === null) return
 
+    const playBeep = (freq: number) => {
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0.3, ctx.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
+        osc.start(ctx.currentTime)
+        osc.stop(ctx.currentTime + 0.3)
+      } catch { /* audio not supported */ }
+    }
+
     const tick = () => {
       const remaining = Math.max(0, Math.ceil((turnEndsAt - Date.now()) / 1000))
       setTimeRemaining(remaining)
+
+      if (remaining === 30 && !warnedRef.current.has(30)) {
+        warnedRef.current.add(30)
+        playBeep(440)
+      }
+      if (remaining === 10 && !warnedRef.current.has(10)) {
+        warnedRef.current.add(10)
+        playBeep(880)
+      }
 
       if (remaining <= 0 && !timerFiredRef.current) {
         timerFiredRef.current = true
