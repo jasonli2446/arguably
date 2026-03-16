@@ -27,7 +27,7 @@ import {
   pauseDebate,
   resumeDebate,
   endDebate,
-} from './debate'
+} from '@/lib/actions/debate'
 
 const MOCK_HOST_ID = 'host-uuid'
 const MOCK_SESSION_ID = 'session-cuid'
