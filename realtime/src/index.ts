@@ -63,7 +63,7 @@ async function main(): Promise<void> {
   await createWorkers();
   setupSignaling(io);
 
-  server.listen(LISTEN_PORT, () => {
+  server.listen(LISTEN_PORT, "0.0.0.0", () => {
     console.log(`\nArguably Realtime SFU running`);
     console.log(`  HTTP + Socket.io: http://localhost:${LISTEN_PORT}`);
     console.log(`  Test client:      http://localhost:${LISTEN_PORT}/`);
