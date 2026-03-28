@@ -52,7 +52,7 @@ const server = http.createServer((req, res) => {
 
 const io = new SocketIOServer(server, {
   cors: {
-    origin: "*",
+    origin: process.env.ALLOWED_ORIGINS?.split(",") || "*",
     methods: ["GET", "POST"],
   },
 });

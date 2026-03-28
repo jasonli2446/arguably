@@ -179,7 +179,7 @@ export function useMediasoup({
             const sendData = await request(socket, 'createWebRtcTransport', { direction: 'send' })
             const sendTransport = device.createSendTransport({
               ...sendData.transportOptions,
-              iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+              iceServers: routerData.iceServers,
             })
             sendTransportRef.current = sendTransport
 
@@ -210,7 +210,7 @@ export function useMediasoup({
             const recvData = await request(socket, 'createWebRtcTransport', { direction: 'recv' })
             const recvTransport = device.createRecvTransport({
               ...recvData.transportOptions,
-              iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+              iceServers: routerData.iceServers,
             })
             recvTransportRef.current = recvTransport
 
