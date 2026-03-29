@@ -26,11 +26,6 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
   const currentRole: SessionRole = currentUser?.session_role ?? SessionRole.AUDIENCE
   const currentUsername = currentUser?.user?.username ?? 'Anonymous'
 
-  // Ensure moderator and host exist
-  if (!session.moderator) {
-    notFound()
-  }
-
   if (!session.host) {
     notFound()
   }
