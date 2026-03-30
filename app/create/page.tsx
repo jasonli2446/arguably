@@ -77,9 +77,9 @@ export default function CreateRoom() {
       await createSession({
         name: roomName,
         type: FORMAT_MAP[selectedFormat],
-        debaterCapacityProponent: parseInt(debaterCapacityProponent),
-        debaterCapacityOpponent: parseInt(debaterCapacityOpponent),
-        debaterCapacityPanel: parseInt(debaterCapacityPanel),
+        debaterCapacityProponent: selectedFormat === 'panel' ? null : parseInt(debaterCapacityProponent),
+        debaterCapacityOpponent: selectedFormat === 'panel' ? null : parseInt(debaterCapacityOpponent),
+        debaterCapacityPanel: selectedFormat === 'panel' ? parseInt(debaterCapacityPanel) : null,
         audienceCapacity: parseInt(audienceCapacity),
         turnLength: parseInt(turnLength),
       })
