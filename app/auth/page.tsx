@@ -39,7 +39,7 @@ export default function AuthPage() {
     }
 
     await ensureUserProfile()
-    router.push("/")
+    router.push("/browse")
     router.refresh()
     setLoading(false)
   }

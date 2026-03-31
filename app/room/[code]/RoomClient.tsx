@@ -42,12 +42,12 @@ interface SessionData {
   debaterCapacityOpponent: number | null
   debaterCapacityPanel: number | null
   audienceCapacity: number
-  host: { id: string; username: string; realname: string }
-  moderator: { id: string; username: string; realname: string } | null
+  host: { id: string; username: string; realname: string | null }
+  moderator: { id: string; username: string; realname: string | null } | null
   participatesIns: {
     userId: string
     sessionRole: SessionRole
-    user: { id: string; username: string; realname: string }
+    user: { id: string; username: string; realname: string | null }
   }[]
 }
 
@@ -297,7 +297,7 @@ export default function RoomClient({
     }
   }
 
-  const displayName = (p: { id: string; username: string; realname: string }) =>
+  const displayName = (p: { id: string; username: string; realname: string | null }) =>
     p.realname || p.username
 
   // Determine the status indicator

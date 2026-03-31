@@ -45,13 +45,13 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
     host: {
       id: session.host.id,
       username: session.host.username,
-      realname: session.host.realname || 'Unknown',
+      realname: session.host.realname ?? null,
     },
     moderator: session.moderator
     ? {
       id: session.moderator.id,
       username: session.moderator.username,
-      realname: session.moderator.realname || 'Unknown',
+      realname: session.moderator.realname ?? null,
     }
     : null,
     participatesIns: session.participates_ins.map((p) => ({
@@ -60,7 +60,7 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
       user: {
         id: p.user.id,
         username: p.user.username,
-        realname: p.user.realname || 'Unknown',
+        realname: p.user.realname ?? null,
       },
     })),
   }
