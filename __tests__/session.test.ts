@@ -22,7 +22,9 @@ vi.mock('@/lib/prisma', () => ({
       create: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }))
 
@@ -35,6 +37,8 @@ import {
   joinSessionAsDebater,
   leaveSession,
   updateSessionStatus,
+  assignModerator,
+  kickParticipant,
 } from '@/lib/actions/session'
 
 // Helper to set up auth mock
@@ -432,5 +436,126 @@ describe('updateSessionStatus', () => {
     expect(call.data.status).toBe(SessionStatus.ENDED)
     expect(call.data.ended_at).toBeInstanceOf(Date)
     expect(call.data.ended_at.getTime()).toBeGreaterThanOrEqual(before)
+  })
+})
+
+// ── Security: Input bounds validation ──
+describe('createSession — security bounds', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAuth(MOCK_USER_ID)
+    ;(prisma.session.findUnique as any).mockResolvedValue(null)
+    ;(prisma.session.create as any).mockResolvedValue({ id: MOCK_SESSION_ID, code: 'ARG-1234' })
+  })
+
+  it('throws if audienceCapacity exceeds 1000', async () => {
+    await expect(createSession(sessionForm({ audienceCapacity: 1001 }) as any)).rejects.toThrow(
+      'Audience capacity cannot exceed 1000'
+    )
+  })
+
+  it('allows audienceCapacity of exactly 1000', async () => {
+    await expect(createSession(sessionForm({ audienceCapacity: 1000 }) as any)).resolves.not.toThrow()
+  })
+
+  it('throws if turnLength exceeds 1800', async () => {
+    await expect(createSession(sessionForm({ turnLength: 1801 }) as any)).rejects.toThrow(
+      'Turn length cannot exceed 30 minutes'
+    )
+  })
+
+  it('allows turnLength of exactly 1800', async () => {
+    await expect(createSession(sessionForm({ turnLength: 1800 }) as any)).resolves.not.toThrow()
+  })
+})
+
+// ── Security: assignModerator participant check ──
+describe('assignModerator — participant check', () => {
+  const TARGET_USER_ID = 'target-user-id'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAuth(MOCK_USER_ID)
+    ;(prisma.session.findUnique as any).mockResolvedValue({
+      id: MOCK_SESSION_ID,
+      host_id: MOCK_USER_ID,
+      moderator_id: null,
+    })
+    ;(prisma.$transaction as any).mockResolvedValue([])
+  })
+
+  it('throws if target user is not an active participant', async () => {
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue(null)
+    await expect(assignModerator(MOCK_SESSION_ID, TARGET_USER_ID)).rejects.toThrow(
+      'Target user is not an active participant'
+    )
+  })
+
+  it('throws if target user has left the session', async () => {
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+      user_id: TARGET_USER_ID,
+      session_id: MOCK_SESSION_ID,
+      left_at: new Date(),
+    })
+    await expect(assignModerator(MOCK_SESSION_ID, TARGET_USER_ID)).rejects.toThrow(
+      'Target user is not an active participant'
+    )
+  })
+
+  it('succeeds when target user is an active participant', async () => {
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+      user_id: TARGET_USER_ID,
+      session_id: MOCK_SESSION_ID,
+      left_at: null,
+    })
+    await expect(assignModerator(MOCK_SESSION_ID, TARGET_USER_ID)).resolves.not.toThrow()
+  })
+})
+
+// ── Security: kickParticipant participant check ──
+describe('kickParticipant — participant check', () => {
+  const TARGET_USER_ID = 'target-user-id'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAuth(MOCK_USER_ID)
+    ;(prisma.session.findUnique as any).mockResolvedValue({
+      id: MOCK_SESSION_ID,
+      host_id: MOCK_USER_ID,
+      moderator_id: null,
+    })
+    ;(prisma.participatesIn.update as any).mockResolvedValue({})
+  })
+
+  it('throws if target user is not an active participant', async () => {
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue(null)
+    await expect(kickParticipant(MOCK_SESSION_ID, TARGET_USER_ID)).rejects.toThrow(
+      'Target user is not an active participant'
+    )
+  })
+
+  it('throws if target user has already left', async () => {
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+      user_id: TARGET_USER_ID,
+      session_id: MOCK_SESSION_ID,
+      left_at: new Date(),
+    })
+    await expect(kickParticipant(MOCK_SESSION_ID, TARGET_USER_ID)).rejects.toThrow(
+      'Target user is not an active participant'
+    )
+  })
+
+  it('kicks active participant successfully', async () => {
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+      user_id: TARGET_USER_ID,
+      session_id: MOCK_SESSION_ID,
+      left_at: null,
+    })
+    await kickParticipant(MOCK_SESSION_ID, TARGET_USER_ID)
+    expect(prisma.participatesIn.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ left_at: expect.any(Date) }),
+      })
+    )
   })
 })
