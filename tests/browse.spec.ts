@@ -3,8 +3,8 @@ import { test, expect } from '@playwright/test'
 test.describe('Browse Page', () => {
   test('loads the browse page', async ({ page }) => {
     await page.goto('/browse')
-    await expect(page.getByText('BROWSE')).toBeVisible()
-    await expect(page.getByText('DEBATES')).toBeVisible()
+    await expect(page.locator('h1', { hasText: 'BROWSE' })).toBeVisible()
+    await expect(page.locator('h1').getByText('DEBATES')).toBeVisible()
   })
 
   test('shows search bar', async ({ page }) => {

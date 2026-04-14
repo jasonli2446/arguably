@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "playwright test",
+    "test:e2e": "playwright test",
     "test:unit": "vitest run",
     "postinstall": "prisma generate",
     "realtime:dev": "npm --prefix realtime run dev",
