@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { generateRoomCode, SessionCapacityInfo, getSessionCapacity, getTotalDebaterCapacity } from "@/lib/utils"
 import { redirect } from "next/navigation"
 import { Prisma, SessionRole, SessionStatus, SessionType } from "@/lib/generated/prisma"
+import { doPromoteFromQueue, cleanupUserVotes } from "@/lib/actions/queue"
 
 export async function createSession(formData: {
     name: string
@@ -15,6 +16,7 @@ export async function createSession(formData: {
     debaterCapacityPanel: number | null
     audienceCapacity: number
     turnLength: number
+    kickThreshold?: number
 }) 
 {
     const supabase = await createClient()
@@ -70,6 +72,7 @@ export async function createSession(formData: {
             debater_capacity_panel: formData.debaterCapacityPanel,
             audience_capacity: formData.audienceCapacity,
             turn_length: formData.turnLength,
+            kick_threshold: formData.kickThreshold ?? 50,
             participates_ins: {
                 create: {
                     user_id: user.id,
@@ -310,14 +313,55 @@ export async function leaveSession(sessionId: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Not authenticated")
 
-    await prisma.participatesIn.update({
+    const participation = await prisma.participatesIn.findUnique({
         where: {
-            user_id_session_id: {
-                user_id: user.id,
-                session_id: sessionId,
-            },
+            user_id_session_id: { user_id: user.id, session_id: sessionId },
         },
-        data: { left_at: new Date() },
+    })
+    if (!participation) throw new Error("Not a participant")
+
+    const wasDebater = participation.session_role === SessionRole.DEBATER
+
+    await prisma.$transaction(async (tx) => {
+        // Mark as left
+        await tx.participatesIn.update({
+            where: {
+                user_id_session_id: { user_id: user.id, session_id: sessionId },
+            },
+            data: { left_at: new Date() },
+        })
+
+        // Remove from queue if queued
+        await tx.audienceQueue.deleteMany({
+            where: { session_id: sessionId, user_id: user.id },
+        })
+
+        // Clean up votes
+        await cleanupUserVotes(tx, sessionId, user.id)
+
+        // If was a debater, remove from debater_order and auto-promote
+        if (wasDebater) {
+            const state = await tx.debateState.findUnique({
+                where: { session_id: sessionId },
+            })
+            if (state) {
+                const order = state.debater_order as { userId: string; displayName: string }[]
+                const removedIndex = order.findIndex((d) => d.userId === user.id)
+                const newOrder = order.filter((d) => d.userId !== user.id)
+                let newIndex = state.current_index
+                if (removedIndex < state.current_index) {
+                    newIndex = Math.max(0, newIndex - 1)
+                } else if (removedIndex === state.current_index && newOrder.length > 0) {
+                    newIndex = newIndex % newOrder.length
+                }
+                await tx.debateState.update({
+                    where: { session_id: sessionId },
+                    data: { debater_order: newOrder, current_index: newIndex },
+                })
+            }
+
+            await doPromoteFromQueue(tx, sessionId)
+        }
     })
 }
 
@@ -401,7 +445,6 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
   if (session.host_id !== user.id && session.moderator_id !== user.id) {
     throw new Error("Only moderators or hosts can kick participants")
   }
-  // Cannot kick yourself
   if (targetUserId === user.id) throw new Error("Cannot kick yourself")
 
   // Verify target is an active participant and get role for history logging
@@ -412,15 +455,47 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
   if (!participation || participation.left_at !== null) {
     throw new Error("Target user is not an active participant in this session")
   }
+  const wasDebater = participation.session_role === SessionRole.DEBATER
 
-  await prisma.participatesIn.update({
-    where: {
-      user_id_session_id: {
-        user_id: targetUserId,
-        session_id: sessionId,
+  await prisma.$transaction(async (tx) => {
+    await tx.participatesIn.update({
+      where: {
+        user_id_session_id: { user_id: targetUserId, session_id: sessionId },
       },
-    },
-    data: { left_at: new Date() },
+      data: { left_at: new Date() },
+    })
+
+    // Remove from queue if queued
+    await tx.audienceQueue.deleteMany({
+      where: { session_id: sessionId, user_id: targetUserId },
+    })
+
+    // Clean up votes
+    await cleanupUserVotes(tx, sessionId, targetUserId)
+
+    // If was a debater, remove from debater_order and auto-promote
+    if (wasDebater) {
+      const state = await tx.debateState.findUnique({
+        where: { session_id: sessionId },
+      })
+      if (state) {
+        const order = state.debater_order as { userId: string; displayName: string }[]
+        const removedIndex = order.findIndex((d) => d.userId === targetUserId)
+        const newOrder = order.filter((d) => d.userId !== targetUserId)
+        let newIndex = state.current_index
+        if (removedIndex < state.current_index) {
+          newIndex = Math.max(0, newIndex - 1)
+        } else if (removedIndex === state.current_index && newOrder.length > 0) {
+          newIndex = newIndex % newOrder.length
+        }
+        await tx.debateState.update({
+          where: { session_id: sessionId },
+          data: { debater_order: newOrder, current_index: newIndex },
+        })
+      }
+
+      await doPromoteFromQueue(tx, sessionId)
+    }
   })
 
   if (participation) {

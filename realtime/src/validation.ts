@@ -26,6 +26,13 @@ export const schemas = {
     rtpCapabilities,
   }),
 
+  reconnect: z.object({
+    roomId,
+    stablePeerId: z.string().uuid(),
+    displayName,
+    rtpCapabilities,
+  }),
+
   createWebRtcTransport: z.object({
     direction: z.enum(["send", "recv"]),
   }),

@@ -56,7 +56,9 @@ beforeEach(async () => {
 function makePeer(id: string, displayName = 'TestUser') {
   return {
     id,
+    stablePeerId: `stable-${id}`,
     displayName,
+    state: 'connected' as const,
     transports: new Map(),
     producers: new Map(),
     consumers: new Map(),
@@ -114,7 +116,7 @@ describe('removePeerFromRoom', () => {
     const room = await getOrCreateRoom('room-1')
     const peer = makePeer('peer-1')
     const mockTransport = { close: vi.fn() }
-    peer.transports.set('t1', mockTransport as any)
+    peer.transports.set('t1', { transport: mockTransport, direction: 'send' } as any)
     addPeerToRoom(room, peer)
 
     const removed = removePeerFromRoom(room, 'peer-1')
@@ -150,5 +152,43 @@ describe('getRoom', () => {
     await getOrCreateRoom('room-x')
     expect(getRoom('room-x')).toBeDefined()
     expect(getRoom('room-x')!.id).toBe('room-x')
+  })
+})
+
+describe('deleteRoom', () => {
+  it('manually deletes a room', async () => {
+    const { deleteRoom } = await import('../../realtime/src/mediasoup/rooms.js')
+    await getOrCreateRoom('room-del')
+    expect(getRoom('room-del')).toBeDefined()
+    deleteRoom('room-del')
+    expect(getRoom('room-del')).toBeUndefined()
+  })
+
+  it('handles deleting non-existent room gracefully', async () => {
+    const { deleteRoom } = await import('../../realtime/src/mediasoup/rooms.js')
+    expect(() => deleteRoom('nonexistent')).not.toThrow()
+  })
+})
+
+describe('getRoomCount', () => {
+  it('returns correct room count', async () => {
+    const { getRoomCount } = await import('../../realtime/src/mediasoup/rooms.js')
+    await getOrCreateRoom('room-1')
+    await getOrCreateRoom('room-2')
+    expect(getRoomCount()).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('getAllRoomStats', () => {
+  it('returns room details with peer counts', async () => {
+    const { getAllRoomStats } = await import('../../realtime/src/mediasoup/rooms.js')
+    const room = await getOrCreateRoom('room-stats')
+    addPeerToRoom(room, makePeer('p1'))
+    addPeerToRoom(room, makePeer('p2'))
+
+    const stats = getAllRoomStats()
+    const roomStat = stats.find(s => s.roomId === 'room-stats')
+    expect(roomStat).toBeDefined()
+    expect(roomStat?.peerCount).toBe(2)
   })
 })

@@ -19,7 +19,10 @@ test.describe('Auth Page', () => {
     await page.getByPlaceholder('you@example.com').fill('invalid@test.com')
     await page.getByPlaceholder('Min 6 characters').fill('wrongpassword')
     await page.getByRole('button', { name: 'ENTER ARENA' }).click()
-    await expect(page.locator('.text-red-400')).toBeVisible({ timeout: 10000 })
+    // Wait for the request to complete (button returns from LOADING...)
+    await expect(page.getByRole('button', { name: 'ENTER ARENA' })).toBeVisible({ timeout: 15000 })
+    // Check for the error message within the form
+    await expect(page.locator('form p.text-red-400')).toBeVisible()
   })
 
   test('redirects authenticated users away from auth page', async ({ page }) => {

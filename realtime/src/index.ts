@@ -3,8 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server as SocketIOServer } from "socket.io";
-import { createWorkers } from "./mediasoup/workers.js";
-import { setupSignaling } from "./signaling.js";
+import { createWorkers, getWorkerCount } from "./mediasoup/workers.js";
+import { setupSignaling, getGracePeriodCount } from "./signaling.js";
+import { getRoomCount, getAllRoomStats } from "./mediasoup/rooms.js";
 import { LISTEN_PORT } from "./config.js";
 import { createAuthMiddleware } from "./auth.js";
 import { recoverDebates } from "./debate.js";
@@ -52,6 +53,26 @@ const server = http.createServer((req, res) => {
   if (req.url === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok", uptime: process.uptime() }));
+    return;
+  }
+
+  // Debug stats endpoint
+  if (req.url === "/debug/stats") {
+    const roomStats = getAllRoomStats();
+    const totalPeers = roomStats.reduce((sum, r) => sum + r.peerCount, 0);
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      uptime: process.uptime(),
+      workers: getWorkerCount(),
+      rooms: {
+        count: getRoomCount(),
+        details: roomStats,
+      },
+      totalPeers,
+      gracePeriodActive: getGracePeriodCount(),
+      memoryUsage: process.memoryUsage(),
+    }, null, 2));
     return;
   }
 

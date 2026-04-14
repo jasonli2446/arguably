@@ -2,7 +2,88 @@
 
 import { prisma } from "@/lib/prisma"
 import { requireAuth, requireHostOrModerator } from "@/lib/actions/utils"
-import { SessionRole, SessionStatus } from "@/lib/generated/prisma"
+import { SessionRole, SessionStatus, VoteType } from "@/lib/generated/prisma"
+import type { PrismaClient } from "@/lib/generated/prisma"
+
+type TransactionClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]
+
+// ---------------------------------------------------------------------------
+// Internal helpers (NOT server actions — called within transactions)
+// ---------------------------------------------------------------------------
+
+/** Pop the front of the queue (oldest joined_queue), promote to DEBATER, update DebateState. */
+async function doPromoteFromQueue(
+  tx: TransactionClient,
+  sessionId: string
+): Promise<{ userId: string; displayName: string } | null> {
+  const front = await tx.audienceQueue.findFirst({
+    where: { session_id: sessionId },
+    orderBy: [{ joined_queue: "asc" }, { id: "asc" }],
+    include: { user: { select: { id: true, username: true, realname: true } } },
+  })
+  if (!front) return null
+
+  // Remove from queue
+  await tx.audienceQueue.delete({ where: { id: front.id } })
+
+  // Update ParticipatesIn to DEBATER
+  await tx.participatesIn.update({
+    where: {
+      user_id_session_id: {
+        user_id: front.user_id,
+        session_id: sessionId,
+      },
+    },
+    data: { session_role: SessionRole.DEBATER },
+  })
+
+  const displayName = front.user.realname || front.user.username
+  const promoted = { userId: front.user_id, displayName }
+
+  // Append to DebateState.debater_order if debate is active
+  const state = await tx.debateState.findUnique({
+    where: { session_id: sessionId },
+  })
+  if (state) {
+    const order = state.debater_order as { userId: string; displayName: string }[]
+    order.push(promoted)
+    await tx.debateState.update({
+      where: { session_id: sessionId },
+      data: { debater_order: order },
+    })
+  }
+
+  // Log role transition
+  await tx.roleHistory.create({
+    data: {
+      session_id: sessionId,
+      user_id: front.user_id,
+      old_role: SessionRole.AUDIENCE,
+      new_role: SessionRole.DEBATER,
+      reason: "Promoted from queue",
+    },
+  })
+
+  return promoted
+}
+
+/** Delete all votes cast by and targeting a user in a session. */
+async function cleanupUserVotes(
+  tx: TransactionClient,
+  sessionId: string,
+  userId: string
+) {
+  await tx.vote.deleteMany({
+    where: {
+      session_id: sessionId,
+      OR: [{ voter_id: userId }, { target_user_id: userId }],
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Exported server actions
+// ---------------------------------------------------------------------------
 
 export async function joinQueue(sessionId: string) {
   const user = await requireAuth()
@@ -38,76 +119,261 @@ export async function joinQueue(sessionId: string) {
 export async function leaveQueue(sessionId: string) {
   const user = await requireAuth()
 
-  await prisma.audienceQueue.delete({
-    where: {
-      session_id_user_id: {
-        session_id: sessionId,
-        user_id: user.id,
-      },
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.audienceQueue.deleteMany({
+      where: { session_id: sessionId, user_id: user.id },
+    })
+    // Also clean up any votes this user cast
+    await tx.vote.deleteMany({
+      where: { session_id: sessionId, voter_id: user.id },
+    })
   })
 }
 
 export async function getQueue(sessionId: string) {
-  return await prisma.audienceQueue.findMany({
+  const user = await requireAuth()
+  if (!user) throw new Error("Not authenticated")
+
+  const entries = await prisma.audienceQueue.findMany({
     where: { session_id: sessionId },
-    orderBy: { joined_queue: "asc" },
+    orderBy: [{ joined_queue: "asc" }, { id: "asc" }],
     include: {
       user: { select: { id: true, username: true, realname: true } },
     },
   })
+
+  return entries.map((entry, index) => ({
+    id: entry.id,
+    userId: entry.user_id,
+    rank: index + 1,
+    displayName: entry.user.realname || entry.user.username,
+    addedAt: entry.joined_queue.toISOString(),
+  }))
 }
 
 export async function promoteFromQueue(sessionId: string, userId?: string) {
   await requireHostOrModerator(sessionId)
 
-  return await prisma.$transaction(async (tx) => {
-    // Find the user to promote: specific user or FIFO head
-    const queueEntry = userId
-      ? await tx.audienceQueue.findUnique({
-          where: { session_id_user_id: { session_id: sessionId, user_id: userId } },
-        })
-      : await tx.audienceQueue.findFirst({
-          where: { session_id: sessionId },
-          orderBy: { joined_queue: "asc" },
-        })
+  return prisma.$transaction(async (tx) => {
+    if (userId) {
+      // Promote specific user
+      const queueEntry = await tx.audienceQueue.findUnique({
+        where: { session_id_user_id: { session_id: sessionId, user_id: userId } },
+      })
+      if (!queueEntry) throw new Error("No one in the queue")
 
-    if (!queueEntry) throw new Error("No one in the queue")
-
-    const targetUserId = queueEntry.user_id
-
-    // Update role to DEBATER
-    await tx.participatesIn.update({
-      where: {
-        user_id_session_id: {
-          user_id: targetUserId,
-          session_id: sessionId,
+      await tx.participatesIn.update({
+        where: {
+          user_id_session_id: {
+            user_id: userId,
+            session_id: sessionId,
+          },
         },
-      },
-      data: { session_role: SessionRole.DEBATER },
-    })
-
-    // Remove from queue
-    await tx.audienceQueue.delete({
-      where: {
-        session_id_user_id: {
-          session_id: sessionId,
-          user_id: targetUserId,
+        data: { session_role: SessionRole.DEBATER },
+      })
+      await tx.audienceQueue.delete({
+        where: {
+          session_id_user_id: {
+            session_id: sessionId,
+            user_id: userId,
+          },
         },
-      },
-    })
+      })
+      await tx.roleHistory.create({
+        data: {
+          session_id: sessionId,
+          user_id: userId,
+          old_role: SessionRole.AUDIENCE,
+          new_role: SessionRole.DEBATER,
+          reason: "Promoted from queue",
+        },
+      })
+      return { promotedUserId: userId }
+    }
 
-    // Log role transition
-    await tx.roleHistory.create({
-      data: {
-        session_id: sessionId,
-        user_id: targetUserId,
-        old_role: SessionRole.AUDIENCE,
-        new_role: SessionRole.DEBATER,
-        reason: "Promoted from queue",
-      },
+    // FIFO promote
+    return doPromoteFromQueue(tx, sessionId).then((result) => {
+      if (!result) throw new Error("No one in the queue")
+      return { promotedUserId: result.userId }
     })
-
-    return { promotedUserId: targetUserId }
   })
 }
+
+export async function castKickVote(sessionId: string, targetUserId: string) {
+  const user = await requireAuth()
+  if (user.id === targetUserId) throw new Error("Cannot vote to kick yourself")
+
+  return prisma.$transaction(async (tx) => {
+    // Verify voter is AUDIENCE
+    const voterPart = await tx.participatesIn.findUnique({
+      where: {
+        user_id_session_id: { user_id: user.id, session_id: sessionId },
+      },
+    })
+    if (!voterPart || voterPart.left_at || voterPart.session_role !== SessionRole.AUDIENCE) {
+      throw new Error("Only audience members can vote to kick")
+    }
+
+    // Verify target is DEBATER and not HOST
+    const targetPart = await tx.participatesIn.findUnique({
+      where: {
+        user_id_session_id: { user_id: targetUserId, session_id: sessionId },
+      },
+    })
+    if (!targetPart || targetPart.left_at || targetPart.session_role !== SessionRole.DEBATER) {
+      throw new Error("Target must be an active debater")
+    }
+
+    // Get session for threshold
+    const session = await tx.session.findUnique({
+      where: { id: sessionId },
+      select: { kick_threshold: true, host_id: true },
+    })
+    if (!session) throw new Error("Session not found")
+    if (targetUserId === session.host_id) throw new Error("Cannot vote to kick the host")
+
+    // Create vote (unique constraint prevents double-voting)
+    await tx.vote.create({
+      data: {
+        session_id: sessionId,
+        voter_id: user.id,
+        target_user_id: targetUserId,
+        vote_type: VoteType.KICK,
+      },
+    })
+
+    // Count votes and audience
+    const voteCount = await tx.vote.count({
+      where: {
+        session_id: sessionId,
+        target_user_id: targetUserId,
+        vote_type: VoteType.KICK,
+      },
+    })
+    const audienceCount = await tx.participatesIn.count({
+      where: {
+        session_id: sessionId,
+        left_at: null,
+        session_role: SessionRole.AUDIENCE,
+      },
+    })
+
+    const requiredVotes = Math.ceil((audienceCount * session.kick_threshold) / 100)
+    const kicked = voteCount >= requiredVotes && requiredVotes > 0
+
+    if (kicked) {
+      // Kick the target
+      await tx.participatesIn.update({
+        where: {
+          user_id_session_id: { user_id: targetUserId, session_id: sessionId },
+        },
+        data: { left_at: new Date() },
+      })
+
+      // Remove target from debater_order
+      const state = await tx.debateState.findUnique({
+        where: { session_id: sessionId },
+      })
+      if (state) {
+        const order = state.debater_order as { userId: string; displayName: string }[]
+        const newOrder = order.filter((d) => d.userId !== targetUserId)
+        // Adjust current_index if needed
+        let newIndex = state.current_index
+        const removedIndex = order.findIndex((d) => d.userId === targetUserId)
+        if (removedIndex < state.current_index) {
+          newIndex = Math.max(0, newIndex - 1)
+        } else if (removedIndex === state.current_index) {
+          newIndex = newOrder.length > 0 ? newIndex % newOrder.length : 0
+        }
+        await tx.debateState.update({
+          where: { session_id: sessionId },
+          data: { debater_order: newOrder, current_index: newIndex },
+        })
+      }
+
+      // Clean up all votes for this target
+      await tx.vote.deleteMany({
+        where: {
+          session_id: sessionId,
+          target_user_id: targetUserId,
+          vote_type: VoteType.KICK,
+        },
+      })
+
+      // Log role transition
+      await tx.roleHistory.create({
+        data: {
+          session_id: sessionId,
+          user_id: targetUserId,
+          old_role: SessionRole.DEBATER,
+          new_role: SessionRole.AUDIENCE,
+          reason: "Kicked by audience vote",
+        },
+      })
+
+      // Auto-promote from queue
+      await doPromoteFromQueue(tx, sessionId)
+    }
+
+    return { kicked, voteCount, requiredVotes }
+  })
+}
+
+export async function removeKickVote(sessionId: string, targetUserId: string) {
+  const user = await requireAuth()
+
+  await prisma.vote.deleteMany({
+    where: {
+      session_id: sessionId,
+      voter_id: user.id,
+      target_user_id: targetUserId,
+      vote_type: VoteType.KICK,
+    },
+  })
+}
+
+export async function getKickVotes(sessionId: string, targetUserId: string) {
+  const user = await requireAuth()
+  if (!user) throw new Error("Not authenticated")
+
+  const [voteCount, audienceCount, userVote, session] = await Promise.all([
+    prisma.vote.count({
+      where: {
+        session_id: sessionId,
+        target_user_id: targetUserId,
+        vote_type: VoteType.KICK,
+      },
+    }),
+    prisma.participatesIn.count({
+      where: {
+        session_id: sessionId,
+        left_at: null,
+        session_role: SessionRole.AUDIENCE,
+      },
+    }),
+    prisma.vote.findFirst({
+      where: {
+        session_id: sessionId,
+        voter_id: user.id,
+        target_user_id: targetUserId,
+        vote_type: VoteType.KICK,
+      },
+    }),
+    prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { kick_threshold: true },
+    }),
+  ])
+
+  const threshold = session?.kick_threshold ?? 50
+  const requiredVotes = Math.ceil((audienceCount * threshold) / 100)
+
+  return {
+    voteCount,
+    requiredVotes,
+    userHasVoted: !!userVote,
+  }
+}
+
+// Re-export internal helpers for use by other server action modules
+export { doPromoteFromQueue, cleanupUserVotes }
