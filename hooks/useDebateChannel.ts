@@ -1,16 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import {
-  getDebateState as getDebateStateAction,
-  startDebate as startDebateAction,
-  advanceTurn as advanceTurnAction,
-  advanceTurnIfExpired,
-  pauseDebate as pauseDebateAction,
-  resumeDebate as resumeDebateAction,
-  endDebate as endDebateAction,
-} from '@/lib/actions/debate'
 
 interface DebateParticipant {
   userId: string
@@ -18,139 +8,250 @@ interface DebateParticipant {
 }
 
 type DebateStatus = 'idle' | 'live' | 'paused' | 'ended'
-
-interface DebateRow {
-  session_id: string
-  debater_order: DebateParticipant[]
-  current_index: number
-  turn_length: number
-  turn_ends_at: number | null
-  is_paused: boolean
-  paused_time_remaining: number
-}
+type DebatePhase = 'ACTIVE' | 'GRACE' | 'PAUSED' | 'ENDED'
 
 interface UseDebateChannelOptions {
-  sessionId: string
+  sfuUrl: string | undefined
+  roomCode: string
   userId: string | null
 }
 
-export function useDebateChannel({ sessionId, userId }: UseDebateChannelOptions) {
+// Socket.io emit with ack helper
+function request(socket: any, event: string, data: Record<string, any> = {}): Promise<any> {
+  return new Promise((resolve, reject) => {
+    socket.emit(event, data, (response: any) => {
+      if (response.success) {
+        resolve(response)
+      } else {
+        reject(new Error(response.error || 'Unknown error'))
+      }
+    })
+  })
+}
+
+export function useDebateChannel({
+  sfuUrl,
+  roomCode,
+  userId,
+}: UseDebateChannelOptions) {
   const [debaters, setDebaters] = useState<DebateParticipant[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [turnEndsAt, setTurnEndsAt] = useState<number | null>(null)
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null)
+  const [turnLength, setTurnLength] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
   const [debateStatus, setDebateStatus] = useState<DebateStatus>('idle')
   const [timeRemaining, setTimeRemaining] = useState(0)
-  const timerFiredRef = useRef(false)
+  const [phase, setPhase] = useState<DebatePhase>('ACTIVE')
+  const [version, setVersion] = useState(0)
+  const [graceCountdown, setGraceCountdown] = useState<number | null>(null)
+
+  const socketRef = useRef<any>(null)
   const warnedRef = useRef<Set<number>>(new Set())
 
   const currentSpeaker = debaters[currentIndex] ?? null
   const isMyTurn = currentSpeaker?.userId === userId
 
-  const applyState = useCallback((row: DebateRow) => {
-    setDebaters(row.debater_order)
-    setCurrentIndex(row.current_index)
-    setTurnEndsAt(row.turn_ends_at)
-    setIsPaused(row.is_paused)
-    setDebateStatus(row.is_paused ? 'paused' : 'live')
-    timerFiredRef.current = false
-    warnedRef.current = new Set()
-
-    if (row.is_paused) {
-      setTimeRemaining(Math.ceil(row.paused_time_remaining))
-    }
+  const playBeep = useCallback((freq: number) => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.3, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
+      osc.start(ctx.currentTime)
+      osc.stop(ctx.currentTime + 0.3)
+    } catch { /* audio not supported */ }
   }, [])
 
-  // Subscribe to Realtime + fetch initial state
+  // Connect to SFU and subscribe to debate events
   useEffect(() => {
-    const supabase = createClient()
+    if (!sfuUrl || !roomCode) return
 
-    const channel = supabase
-      .channel(`debate:${sessionId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'DebateState',
-          filter: `session_id=eq.${sessionId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'DELETE') {
-            setDebateStatus('ended')
-            setDebaters([])
-            setTurnEndsAt(null)
-            setTimeRemaining(0)
-            return
+    let cancelled = false
+
+    async function connect() {
+      const { io } = await import('socket.io-client')
+
+      if (cancelled) return
+
+      const socket = io(sfuUrl!, {
+        transports: ['websocket'],
+        auth: { userId },
+      })
+      socketRef.current = socket
+
+      socket.on('connect', async () => {
+        if (cancelled) return
+
+        try {
+          // Join debate room (lightweight, no mediasoup)
+          await request(socket, 'joinDebateRoom', { roomCode })
+
+          // Fetch initial state (handles refresh recovery)
+          const resp = await request(socket, 'getDebateState', { roomCode })
+          if (resp.state) {
+            applyFullState(resp.state)
           }
-          applyState(payload.new as unknown as DebateRow)
-        },
-      )
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          const state = await getDebateStateAction(sessionId)
-          if (state) applyState(state as DebateRow)
+        } catch (err) {
+          console.error('Debate room join error:', err)
         }
       })
 
+      // ── Debate events ──
+
+      socket.on('turnChanged', (payload: any) => {
+        setDebaters(payload.debaterOrder)
+        setCurrentIndex(payload.currentIndex)
+        setTurnStartedAt(payload.turnStartedAt)
+        setTurnLength(payload.turnLength)
+        setIsPaused(false)
+        setDebateStatus('live')
+        setPhase(payload.phase || 'ACTIVE')
+        setVersion(payload.version)
+        setGraceCountdown(null)
+        warnedRef.current = new Set()
+      })
+
+      socket.on('turnExpiring', (payload: any) => {
+        setPhase('GRACE')
+        setVersion(payload.version)
+        setGraceCountdown(3)
+      })
+
+      socket.on('turnWarning', (payload: any) => {
+        const secs = payload.secondsRemaining
+        if (secs === 30) playBeep(440)
+        if (secs === 10) playBeep(880)
+      })
+
+      socket.on('debatePaused', (payload: any) => {
+        setIsPaused(true)
+        setDebateStatus('paused')
+        setPhase('PAUSED')
+        setVersion(payload.version)
+        setTimeRemaining(Math.ceil(payload.timeRemaining))
+        setTurnStartedAt(null)
+      })
+
+      socket.on('debateResumed', (payload: any) => {
+        setIsPaused(false)
+        setDebateStatus('live')
+        setPhase('ACTIVE')
+        setVersion(payload.version)
+        setTurnStartedAt(payload.turnStartedAt)
+        setTurnLength(payload.turnLength)
+        warnedRef.current = new Set()
+      })
+
+      socket.on('debateEnded', () => {
+        setDebateStatus('ended')
+        setDebaters([])
+        setTurnStartedAt(null)
+        setTimeRemaining(0)
+        setPhase('ENDED')
+        setGraceCountdown(null)
+      })
+
+      socket.on('disconnect', () => {
+        if (!cancelled) {
+          console.log('Debate socket disconnected')
+        }
+      })
+    }
+
+    function applyFullState(state: any) {
+      setDebaters(state.debaterOrder)
+      setCurrentIndex(state.currentIndex)
+      setTurnStartedAt(state.turnStartedAt)
+      setTurnLength(state.turnLength)
+      setIsPaused(state.isPaused)
+      setPhase(state.phase)
+      setVersion(state.version)
+      warnedRef.current = new Set()
+
+      if (state.phase === 'ENDED') {
+        setDebateStatus('ended')
+      } else if (state.isPaused) {
+        setDebateStatus('paused')
+        setTimeRemaining(Math.ceil(state.pausedTimeRemaining))
+      } else if (state.debaterOrder.length > 0) {
+        setDebateStatus('live')
+      }
+    }
+
+    connect()
+
     return () => {
-      supabase.removeChannel(channel)
+      cancelled = true
+      if (socketRef.current) {
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
     }
-  }, [sessionId, applyState])
+  }, [sfuUrl, roomCode, userId, playBeep])
 
-  // Timer countdown
+  // Timer countdown (client-side, derived from turnStartedAt + turnLength)
   useEffect(() => {
-    if (debateStatus !== 'live' || isPaused || turnEndsAt === null) return
-
-    const playBeep = (freq: number) => {
-      try {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
-        osc.connect(gain)
-        gain.connect(ctx.destination)
-        osc.frequency.value = freq
-        gain.gain.setValueAtTime(0.3, ctx.currentTime)
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
-        osc.start(ctx.currentTime)
-        osc.stop(ctx.currentTime + 0.3)
-      } catch { /* audio not supported */ }
-    }
+    if (debateStatus !== 'live' || isPaused || turnStartedAt === null) return
 
     const tick = () => {
-      const remaining = Math.max(0, Math.ceil((turnEndsAt - Date.now()) / 1000))
+      const elapsed = (Date.now() - turnStartedAt) / 1000
+      const remaining = Math.max(0, Math.ceil(turnLength - elapsed))
       setTimeRemaining(remaining)
-
-      if (remaining === 30 && !warnedRef.current.has(30)) {
-        warnedRef.current.add(30)
-        playBeep(440)
-      }
-      if (remaining === 10 && !warnedRef.current.has(10)) {
-        warnedRef.current.add(10)
-        playBeep(880)
-      }
-
-      if (remaining <= 0 && !timerFiredRef.current) {
-        timerFiredRef.current = true
-        advanceTurnIfExpired(sessionId).catch(console.error)
-      }
     }
 
     tick()
     const interval = setInterval(tick, 250)
     return () => clearInterval(interval)
-  }, [debateStatus, isPaused, turnEndsAt, sessionId])
+  }, [debateStatus, isPaused, turnStartedAt, turnLength])
 
-  // Actions
+  // Grace period countdown
+  useEffect(() => {
+    if (graceCountdown === null || graceCountdown <= 0) return
+
+    const timer = setTimeout(() => {
+      setGraceCountdown((prev) => (prev !== null && prev > 0 ? prev - 1 : null))
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [graceCountdown])
+
+  // Actions (emit via Socket.io)
   const startDebate = useCallback(
-    (debaterList: DebateParticipant[], turnLen: number) =>
-      startDebateAction(sessionId, debaterList, turnLen),
-    [sessionId],
+    async (debaterList: DebateParticipant[], turnLen: number, format: string) => {
+      if (!socketRef.current) throw new Error('Not connected')
+      await request(socketRef.current, 'startDebate', {
+        roomCode,
+        debaters: debaterList,
+        turnLength: turnLen,
+        format,
+      })
+    },
+    [roomCode],
   )
-  const nextTurn = useCallback(() => advanceTurnAction(sessionId), [sessionId])
-  const pause = useCallback(() => pauseDebateAction(sessionId), [sessionId])
-  const resume = useCallback(() => resumeDebateAction(sessionId), [sessionId])
-  const endDebate = useCallback(() => endDebateAction(sessionId), [sessionId])
+
+  const nextTurn = useCallback(async () => {
+    if (!socketRef.current) throw new Error('Not connected')
+    await request(socketRef.current, 'nextTurn', { roomCode, version })
+  }, [roomCode, version])
+
+  const pause = useCallback(async () => {
+    if (!socketRef.current) throw new Error('Not connected')
+    await request(socketRef.current, 'pauseDebate', { roomCode })
+  }, [roomCode])
+
+  const resume = useCallback(async () => {
+    if (!socketRef.current) throw new Error('Not connected')
+    await request(socketRef.current, 'resumeDebate', { roomCode })
+  }, [roomCode])
+
+  const endDebate = useCallback(async () => {
+    if (!socketRef.current) throw new Error('Not connected')
+    await request(socketRef.current, 'endDebate', { roomCode })
+  }, [roomCode])
 
   return {
     currentSpeaker,
@@ -159,6 +260,9 @@ export function useDebateChannel({ sessionId, userId }: UseDebateChannelOptions)
     isMyTurn,
     debateStatus,
     debaters,
+    phase,
+    version,
+    graceCountdown,
     startDebate,
     nextTurn,
     pause,

@@ -15,6 +15,7 @@ interface UseMediasoupOptions {
   sfuUrl: string | undefined
   roomId: string
   displayName: string
+  userId?: string
   enabled: boolean
 }
 
@@ -24,6 +25,7 @@ interface UseMediasoupReturn {
   remoteStreams: Map<string, RemoteStream>
   audioMuted: boolean
   videoOff: boolean
+  serverMuted: boolean
   toggleMute: () => void
   toggleVideo: () => void
   disconnect: () => void
@@ -47,6 +49,7 @@ export function useMediasoup({
   sfuUrl,
   roomId,
   displayName,
+  userId,
   enabled,
 }: UseMediasoupOptions): UseMediasoupReturn {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
@@ -54,6 +57,7 @@ export function useMediasoup({
   const [remoteStreams, setRemoteStreams] = useState<Map<string, RemoteStream>>(new Map())
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoOff, setVideoOff] = useState(false)
+  const [serverMuted, setServerMuted] = useState(false)
   const [reconnectTrigger, setReconnectTrigger] = useState(0)
 
   const socketRef = useRef<any>(null)
@@ -323,6 +327,22 @@ export function useMediasoup({
           }
         })
 
+        // ── Debate mute enforcement ──
+        socket.on('forceMute', (data: any) => {
+          if (data.userId === userId && localStreamRef.current) {
+            localStreamRef.current.getAudioTracks().forEach((t: MediaStreamTrack) => { t.enabled = false })
+            setAudioMuted(true)
+            setServerMuted(true)
+          }
+        })
+        socket.on('forceUnmute', (data: any) => {
+          if (data.userId === userId && localStreamRef.current) {
+            localStreamRef.current.getAudioTracks().forEach((t: MediaStreamTrack) => { t.enabled = true })
+            setAudioMuted(false)
+            setServerMuted(false)
+          }
+        })
+
         socket.on('peerLeft', (data: any) => {
           const toRemove: string[] = []
           for (const [consumerId, info] of consumersRef.current) {
@@ -395,6 +415,7 @@ export function useMediasoup({
     remoteStreams,
     audioMuted,
     videoOff,
+    serverMuted,
     toggleMute,
     toggleVideo,
     disconnect,

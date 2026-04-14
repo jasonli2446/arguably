@@ -112,7 +112,8 @@ export default function RoomClient({
   })
 
   const debate = useDebateChannel({
-    sessionId: session.id,
+    sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
+    roomCode: session.code,
     userId: currentUserId,
   })
 
@@ -284,7 +285,7 @@ export default function RoomClient({
       }))
 
       if (debaterList.length >= 2) {
-        await debate.startDebate(debaterList, session.turnLength)
+        await debate.startDebate(debaterList, session.turnLength, session.type)
       }
 
       await updateSessionStatus(session.id, SessionStatus.LIVE)
