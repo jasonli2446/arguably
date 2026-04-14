@@ -269,6 +269,8 @@ export async function joinSessionAsDebater(sessionId: string, isProponent: boole
         },
     })
 
+    const previousRole = existing?.session_role ?? SessionRole.AUDIENCE
+
     if (existing) {
         await prisma.participatesIn.update({
             where: {
@@ -288,6 +290,17 @@ export async function joinSessionAsDebater(sessionId: string, isProponent: boole
             },
         })
     }
+
+    // Log role transition
+    await prisma.roleHistory.create({
+        data: {
+            session_id: sessionId,
+            user_id: user.id,
+            old_role: previousRole,
+            new_role: SessionRole.DEBATER,
+            reason: "Joined as debater",
+        },
+    })
 }
 
 export async function leaveSession(sessionId: string) {
@@ -319,15 +332,35 @@ export async function assignModerator(sessionId: string, targetUserId: string) {
   if (session.host_id !== user.id) throw new Error("Only the host can assign a moderator")
   if (targetUserId === user.id) throw new Error("Host cannot assign themselves as moderator")
 
+  // Get current role of target user for history logging
+  const targetParticipation = await prisma.participatesIn.findUnique({
+    where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
+    select: { session_role: true },
+  })
+  if (!targetParticipation) throw new Error("Target user is not a participant")
+
+  const txOps = []
+
   // Demote previous moderator back to AUDIENCE (if any)
   if (session.moderator_id && session.moderator_id !== targetUserId) {
-    await prisma.participatesIn.updateMany({
-      where: { session_id: sessionId, user_id: session.moderator_id },
-      data: { session_role: SessionRole.AUDIENCE },
-    })
+    txOps.push(
+      prisma.participatesIn.updateMany({
+        where: { session_id: sessionId, user_id: session.moderator_id },
+        data: { session_role: SessionRole.AUDIENCE },
+      }),
+      prisma.roleHistory.create({
+        data: {
+          session_id: sessionId,
+          user_id: session.moderator_id,
+          old_role: SessionRole.MODERATOR,
+          new_role: SessionRole.AUDIENCE,
+          reason: "Demoted: new moderator assigned",
+        },
+      })
+    )
   }
 
-  await prisma.$transaction([
+  txOps.push(
     prisma.session.update({
       where: { id: sessionId },
       data: { moderator_id: targetUserId },
@@ -336,7 +369,18 @@ export async function assignModerator(sessionId: string, targetUserId: string) {
       where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
       data: { session_role: SessionRole.MODERATOR },
     }),
-  ])
+    prisma.roleHistory.create({
+      data: {
+        session_id: sessionId,
+        user_id: targetUserId,
+        old_role: targetParticipation.session_role,
+        new_role: SessionRole.MODERATOR,
+        reason: "Assigned as moderator by host",
+      },
+    })
+  )
+
+  await prisma.$transaction(txOps)
 }
 
 export async function kickParticipant(sessionId: string, targetUserId: string) {
@@ -356,6 +400,12 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
   // Cannot kick yourself
   if (targetUserId === user.id) throw new Error("Cannot kick yourself")
 
+  // Get current role for history logging
+  const participation = await prisma.participatesIn.findUnique({
+    where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
+    select: { session_role: true },
+  })
+
   await prisma.participatesIn.update({
     where: {
       user_id_session_id: {
@@ -365,6 +415,18 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
     },
     data: { left_at: new Date() },
   })
+
+  if (participation) {
+    await prisma.roleHistory.create({
+      data: {
+        session_id: sessionId,
+        user_id: targetUserId,
+        old_role: participation.session_role,
+        new_role: SessionRole.AUDIENCE,
+        reason: "Kicked by moderator/host",
+      },
+    })
+  }
 }
 
 export async function updateSessionStatus(sessionId: string, status: SessionStatus) {
@@ -390,6 +452,10 @@ export async function updateSessionStatus(sessionId: string, status: SessionStat
 
     const data : Prisma.SessionUpdateInput = { }
     data.status = status
+
+    if (status === SessionStatus.LIVE) {
+        data.format_locked = true
+    }
 
     if (status === SessionStatus.ENDED) {
         data.ended_at = new Date()
