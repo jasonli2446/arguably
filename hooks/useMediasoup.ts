@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
+type ConnectionState = 'disconnected' | 'connecting' | 'reconnecting' | 'connected' | 'error'
 
 interface RemoteStream {
   stream: MediaStream
@@ -22,6 +22,7 @@ interface UseMediasoupReturn {
   connectionState: ConnectionState
   localStream: MediaStream | null
   remoteStreams: Map<string, RemoteStream>
+  reconnectingPeers: Set<string>
   audioMuted: boolean
   videoOff: boolean
   toggleMute: () => void
@@ -52,6 +53,7 @@ export function useMediasoup({
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStreams, setRemoteStreams] = useState<Map<string, RemoteStream>>(new Map())
+  const [reconnectingPeers, setReconnectingPeers] = useState<Set<string>>(new Set())
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoOff, setVideoOff] = useState(false)
   const [reconnectTrigger, setReconnectTrigger] = useState(0)
@@ -63,6 +65,8 @@ export function useMediasoup({
   const producersRef = useRef<Map<string, any>>(new Map())
   const consumersRef = useRef<Map<string, { consumer: any; peerId: string }>>(new Map())
   const localStreamRef = useRef<MediaStream | null>(null)
+  const peerIdRef = useRef<string | null>(null)
+  const routerDataRef = useRef<any>(null)
   const cleanedUpRef = useRef(false)
 
   const cleanup = useCallback(() => {
@@ -142,6 +146,53 @@ export function useMediasoup({
     setReconnectTrigger((n) => n + 1)
   }, [cleanup])
 
+  // Helper to set up media state after getting stream
+  const setupMediaState = useCallback((stream: MediaStream, socket: any, sendTransport: any, recvTransport: any) => {
+    localStreamRef.current = stream
+    setLocalStream(stream)
+  }, [])
+
+  // Fresh join flow
+  const doFreshJoin = useCallback(async (socket: any, device: any) => {
+    const routerData = await request(socket, 'getRouterRtpCapabilities', { roomId })
+    routerDataRef.current = routerData
+
+    await device.load({ routerRtpCapabilities: routerData.rtpCapabilities })
+    deviceRef.current = device
+
+    const joinResp = await request(socket, 'joinRoom', {
+      roomId,
+      displayName,
+      rtpCapabilities: device.rtpCapabilities,
+    })
+
+    // Store stablePeerId for reconnection
+    if (joinResp.stablePeerId) {
+      peerIdRef.current = joinResp.stablePeerId
+    }
+
+    return routerData
+  }, [roomId, displayName])
+
+  // Reconnect flow (after disconnect with peerIdRef set)
+  const doReconnect = useCallback(async (socket: any, device: any) => {
+    if (!peerIdRef.current || !routerDataRef.current) {
+      throw new Error('Cannot reconnect: missing peer ID or router data')
+    }
+
+    await device.load({ routerRtpCapabilities: routerDataRef.current.rtpCapabilities })
+    deviceRef.current = device
+
+    await request(socket, 'reconnect', {
+      roomId,
+      stablePeerId: peerIdRef.current,
+      displayName,
+      rtpCapabilities: device.rtpCapabilities,
+    })
+
+    return routerDataRef.current
+  }, [roomId, displayName])
+
   useEffect(() => {
     if (!enabled || !sfuUrl || !roomId || !displayName) {
       return
@@ -174,6 +225,10 @@ export function useMediasoup({
         const socket = io(sfuUrl!, {
           transports: ['websocket'],
           auth: { token: session.access_token },
+          reconnection: true,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          reconnectionAttempts: 5,
         })
         socketRef.current = socket
 
@@ -181,20 +236,23 @@ export function useMediasoup({
           if (cancelled) return
 
           try {
-            // 1. Get router RTP capabilities
-            const routerData = await request(socket, 'getRouterRtpCapabilities', { roomId })
-
-            // 2. Load mediasoup Device
             const device = new Device()
-            await device.load({ routerRtpCapabilities: routerData.rtpCapabilities })
-            deviceRef.current = device
 
-            // 3. Join room
-            await request(socket, 'joinRoom', {
-              roomId,
-              displayName,
-              rtpCapabilities: device.rtpCapabilities,
-            })
+            // If we have a peerIdRef, try reconnect flow first
+            let routerData
+            if (peerIdRef.current) {
+              console.log('Attempting reconnection with stable peer ID:', peerIdRef.current)
+              try {
+                routerData = await doReconnect(socket, device)
+              } catch (err) {
+                console.warn('Reconnect failed, falling back to fresh join:', err)
+                peerIdRef.current = null
+                routerDataRef.current = null
+                routerData = await doFreshJoin(socket, device)
+              }
+            } else {
+              routerData = await doFreshJoin(socket, device)
+            }
 
             // 4. Create send transport
             const sendData = await request(socket, 'createWebRtcTransport', { direction: 'send' })
@@ -290,14 +348,17 @@ export function useMediasoup({
 
         socket.on('disconnect', () => {
           if (!cancelled) {
-            setConnectionState('disconnected')
+            setConnectionState('reconnecting')
           }
         })
 
         socket.on('connect_error', (err: Error) => {
           console.error('SFU connection error:', err)
           if (!cancelled) {
-            setConnectionState('error')
+            // Only set error if we don't have a peerId (i.e., never connected)
+            if (!peerIdRef.current) {
+              setConnectionState('error')
+            }
           }
         })
 
@@ -339,6 +400,31 @@ export function useMediasoup({
               return next
             })
           }
+          // Remove from reconnecting set
+          setReconnectingPeers((prev) => {
+            const next = new Set(prev)
+            next.delete(data.peerId)
+            return next
+          })
+        })
+
+        socket.on('peerReconnecting', (data: any) => {
+          console.log('Peer reconnecting:', data.displayName)
+          setReconnectingPeers((prev) => new Set(prev).add(data.peerId))
+        })
+
+        socket.on('peerReconnected', (data: any) => {
+          console.log('Peer reconnected:', data.displayName)
+          setReconnectingPeers((prev) => {
+            const next = new Set(prev)
+            next.delete(data.peerId)
+            return next
+          })
+        })
+
+        socket.on('transportFailure', (data: any) => {
+          console.error('Transport failure:', data)
+          // Don't crash — let reconnection handle it
         })
       } catch (err: any) {
         console.error('SFU connect error:', err)
@@ -393,6 +479,7 @@ export function useMediasoup({
     connectionState,
     localStream,
     remoteStreams,
+    reconnectingPeers,
     audioMuted,
     videoOff,
     toggleMute,
