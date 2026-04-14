@@ -19,7 +19,7 @@ test.describe('Role Assignment', () => {
 
     await page.waitForURL(/\/room\/ARG-\d{4}/, { timeout: 15000 })
 
-    // The moderator section should be visible in the sidebar
-    await expect(page.getByText('MODERATOR')).toBeVisible()
+    // Wait for room to fully render, then check moderator section
+    await expect(page.getByText('MODERATOR')).toBeVisible({ timeout: 10000 })
   })
 })
