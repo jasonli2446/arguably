@@ -10,8 +10,13 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
 
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+vi.mock('@/lib/actions/queue', () => ({
+  doPromoteFromQueue: vi.fn().mockResolvedValue(null),
+  cleanupUserVotes: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@/lib/prisma', () => {
+  const prismaMock = {
     session: {
       create: vi.fn(),
       findUnique: vi.fn(),
@@ -22,9 +27,22 @@ vi.mock('@/lib/prisma', () => ({
       create: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
-  },
-}))
+    audienceQueue: {
+      deleteMany: vi.fn(),
+    },
+    vote: {
+      deleteMany: vi.fn(),
+    },
+    debateState: {
+      findUnique: vi.fn(),
+    },
+    $transaction: vi.fn(async (callback: any) => callback(prismaMock)),
+  }
+
+  return { prisma: prismaMock }
+})
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
@@ -152,6 +170,17 @@ describe('createSession', () => {
   it('throws if audience capacity is negative', async () => {
     await expect(createSession(sessionForm({ audienceCapacity: -1 }) as any)).rejects.toThrow(
       'Audience capacity cannot be negative'
+    )
+  })
+
+  it('stores kick_threshold when provided', async () => {
+    await createSession(sessionForm({ kickThreshold: 75 }) as any)
+    expect(prisma.session.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kick_threshold: 75,
+        }),
+      })
     )
   })
 })
@@ -328,7 +357,15 @@ describe('leaveSession', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuth(MOCK_USER_ID)
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+      user_id: MOCK_USER_ID,
+      session_id: MOCK_SESSION_ID,
+      session_role: SessionRole.AUDIENCE,
+    })
     ;(prisma.participatesIn.update as any).mockResolvedValue({})
+    ;(prisma.audienceQueue.deleteMany as any).mockResolvedValue({})
+    ;(prisma.vote.deleteMany as any).mockResolvedValue({})
+    ;(prisma.debateState.findUnique as any).mockResolvedValue(null)
   })
 
   it('throws if not authenticated', async () => {
@@ -356,6 +393,11 @@ describe('leaveSession', () => {
         }),
       })
     )
+  })
+
+  it('cleans up queue entry and votes', async () => {
+    await leaveSession(MOCK_SESSION_ID)
+    expect(prisma.audienceQueue.deleteMany).toHaveBeenCalled()
   })
 })
 
