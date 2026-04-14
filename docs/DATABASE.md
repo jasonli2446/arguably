@@ -27,6 +27,10 @@ This document describes the database schema for Arguably.
 - `PAUSED` - Temporarily paused
 - `ENDED` - Debate concluded
 
+### VoteType
+- `KICK` - Vote to remove a participant
+- `PROMOTE` - Vote to promote an audience member to debater
+
 ## Models
 
 ### User
@@ -43,11 +47,31 @@ Represents a platform user account.
 | `realname` | String? | - | null | Display name |
 | `role` | UniversalRole | - | USER | System role |
 | `created_at` | DateTime | - | now() | Account creation |
+| `bio` | String? | - | null | User biography |
+| `notify_invitations` | Boolean | - | true | Email notification for invitations |
+| `notify_messages` | Boolean | - | true | Email notification for messages |
+| `notify_weekly_digest` | Boolean | - | false | Weekly digest emails |
+| `profile_visibility` | String | - | "public" | Profile visibility setting |
+| `show_online_status` | Boolean | - | true | Display online status |
+| `allow_direct_messages` | Boolean | - | true | Allow DMs from other users |
+| `theme` | String | - | "dark" | UI theme preference |
+| `font_size` | String | - | "medium" | Font size preference |
+| `animations_enabled` | Boolean | - | true | Enable UI animations |
+| `language` | String | - | "en" | Preferred language |
+| `timezone` | String | - | "UTC" | User timezone |
+| `date_format` | String | - | "MM/DD/YYYY" | Date format preference |
 
 **Relations:**
 - `hosted_sessions: Session[]` - Sessions created by this user
 - `moderated_sessions: Session[]` - Sessions moderated by this user
 - `participates_ins: ParticipatesIn[]` - All session participations
+- `transcripts: Transcript[]` - Transcript segments spoken by this user
+- `recordings: Recording[]` - Recordings created by this user
+- `votes_cast: Vote[]` - Votes cast by this user
+- `votes_received: Vote[]` - Votes received by this user
+- `audience_queues: AudienceQueue[]` - Queue entries for this user
+- `team_assignments: TeamAssignment[]` - Team assignments for this user
+- `role_history: RoleHistory[]` - Role change history for this user
 
 ---
 
@@ -72,6 +96,7 @@ Represents a debate session/room.
 | `debater_capacity_panel` | Int? | - | 5 | Max panel slots (PANEL only) |
 | `audience_capacity` | Int | - | 10 | Max audience slots |
 | `turn_length` | Int | - | 120 | Turn duration (seconds) |
+| `format_locked` | Boolean | - | false | Format locked after debate begins |
 | `created_at` | DateTime | - | now() | Creation timestamp |
 | `ended_at` | DateTime? | - | null | End timestamp |
 
@@ -79,6 +104,13 @@ Represents a debate session/room.
 - `host: User` - Session creator
 - `moderator: User?` - Session moderator (optional)
 - `participates_ins: ParticipatesIn[]` - All participants
+- `debate_state: DebateState?` - Current debate state (optional)
+- `transcripts: Transcript[]` - Transcript segments for this session
+- `recordings: Recording[]` - Recordings of this session
+- `votes: Vote[]` - All votes cast in this session
+- `audience_queue: AudienceQueue[]` - Audience members in queue
+- `team_assignments: TeamAssignment[]` - Team assignments for this session
+- `role_history: RoleHistory[]` - Role change history for this session
 
 **Notes:**
 - The term "proponent" refers to the debaters that agree with the host
@@ -108,13 +140,186 @@ Join table tracking user participation in sessions.
 
 ---
 
+### Transcript
+
+Speaker-attributed, timestamped transcript segment (REQ-6).
+
+**Fields:**
+
+| Field | Type | Constraints | Default | Notes |
+|-------|------|-------------|---------|-------|
+| `id` | String | PK | CUID | - |
+| `session_id` | String | FK → Session | - | Session this segment belongs to |
+| `speaker_id` | UUID | FK → User | - | User who spoke this segment |
+| `content` | String | - | - | Transcribed text |
+| `timestamp` | Float | - | - | Seconds since debate start |
+| `duration` | Float? | - | null | Duration of speech segment (seconds) |
+| `confidence` | Float? | - | null | Confidence score (0.0 - 1.0) |
+| `created_at` | DateTime | - | now() | Creation timestamp |
+
+**Relations:**
+- `session: Session` - Session this transcript belongs to
+- `speaker: User` - User who spoke this segment
+
+**Indexes:**
+- Composite index on `(session_id, timestamp)` for efficient timeline queries
+
+---
+
+### Recording
+
+Video recording link for a completed session (REQ-8).
+
+**Fields:**
+
+| Field | Type | Constraints | Default | Notes |
+|-------|------|-------------|---------|-------|
+| `id` | String | PK | CUID | - |
+| `session_id` | String | FK → Session | - | Session this recording is for |
+| `recorded_by` | UUID | FK → User | - | User who created the recording |
+| `url` | String | - | - | Recording file URL |
+| `duration` | Float? | - | null | Duration in seconds |
+| `file_size` | Int? | - | null | File size in bytes |
+| `mime_type` | String? | - | null | MIME type (e.g., "video/webm") |
+| `created_at` | DateTime | - | now() | Creation timestamp |
+
+**Relations:**
+- `session: Session` - Session this recording is for
+- `recorder: User` - User who created the recording
+
+**Indexes:**
+- Index on `session_id`
+
+---
+
+### Vote
+
+Audience vote to kick or promote a participant (REQ-4).
+
+**Fields:**
+
+| Field | Type | Constraints | Default | Notes |
+|-------|------|-------------|---------|-------|
+| `id` | String | PK | CUID | - |
+| `session_id` | String | FK → Session | - | Session this vote is in |
+| `voter_id` | UUID | FK → User | - | User casting the vote |
+| `target_user_id` | UUID | FK → User | - | User being voted on |
+| `vote_type` | VoteType | - | - | Type of vote (KICK or PROMOTE) |
+| `created_at` | DateTime | - | now() | Vote timestamp |
+
+**Relations:**
+- `session: Session` - Session this vote belongs to
+- `voter: User` - User who cast the vote
+- `target: User` - User being voted on
+
+**Indexes:**
+- Index on `session_id`
+
+**Constraints:**
+- Unique constraint on `(session_id, voter_id, target_user_id, vote_type)` - each user can only cast one vote of each type against each target per session
+
+---
+
+### AudienceQueue
+
+FIFO queue for audience members waiting to speak (REQ-4).
+
+**Fields:**
+
+| Field | Type | Constraints | Default | Notes |
+|-------|------|-------------|---------|-------|
+| `id` | String | PK | CUID | - |
+| `session_id` | String | FK → Session | - | Session this queue entry is for |
+| `user_id` | UUID | FK → User | - | User in queue |
+| `joined_queue` | DateTime | - | now() | When user joined the queue |
+
+**Relations:**
+- `session: Session` - Session this queue entry belongs to
+- `user: User` - User in the queue
+
+**Indexes:**
+- Index on `session_id`
+
+**Constraints:**
+- Unique constraint on `(session_id, user_id)` - a user can only be in the queue once per session
+
+---
+
+### TeamAssignment
+
+Team membership for team debates.
+
+**Fields:**
+
+| Field | Type | Constraints | Default | Notes |
+|-------|------|-------------|---------|-------|
+| `id` | String | PK | CUID | - |
+| `session_id` | String | FK → Session | - | Session this assignment is for |
+| `user_id` | UUID | FK → User | - | User on the team |
+| `team` | String | - | - | Team identifier: "proponent" or "opponent" |
+| `assigned_at` | DateTime | - | now() | Assignment timestamp |
+
+**Relations:**
+- `session: Session` - Session this assignment belongs to
+- `user: User` - User on the team
+
+**Indexes:**
+- Index on `session_id`
+
+**Constraints:**
+- Unique constraint on `(session_id, user_id)` - a user can only be on one team per session
+
+---
+
+### RoleHistory
+
+Tracks role transitions with timestamps for audit purposes (REQ-2.8).
+
+**Fields:**
+
+| Field | Type | Constraints | Default | Notes |
+|-------|------|-------------|---------|-------|
+| `id` | String | PK | CUID | - |
+| `session_id` | String | FK → Session | - | Session where role changed |
+| `user_id` | UUID | FK → User | - | User whose role changed |
+| `old_role` | SessionRole | - | - | Previous role |
+| `new_role` | SessionRole | - | - | New role |
+| `changed_at` | DateTime | - | now() | Timestamp of role change |
+| `reason` | String? | - | null | Optional reason for role change |
+
+**Relations:**
+- `session: Session` - Session this role change belongs to
+- `user: User` - User whose role changed
+
+**Indexes:**
+- Index on `session_id`
+- Index on `user_id`
+
+---
+
 ## Relationships
 
 ```
 User
 ├─ (1) ─ hosts ─ (Many) → Session ─ has ─ (Many) → ParticipatesIn
 ├─ (1) ─ moderates ─ (Many) → Session
-└─ (1) ─ participates ─ (Many) → ParticipatesIn
+├─ (1) ─ participates ─ (Many) → ParticipatesIn
+├─ (1) ─ speaks ─ (Many) → Transcript
+├─ (1) ─ records ─ (Many) → Recording
+├─ (1) ─ casts_votes ─ (Many) → Vote
+├─ (1) ─ receives_votes ─ (Many) → Vote
+├─ (1) ─ queues ─ (Many) → AudienceQueue
+├─ (1) ─ assigned_to ─ (Many) → TeamAssignment
+└─ (1) ─ role_changes ─ (Many) → RoleHistory
+
+Session
+├─ (1) ─ has ─ (1?) → DebateState
+├─ (1) ─ has ─ (Many) → Transcript
+├─ (1) ─ has ─ (Many) → Recording
+├─ (1) ─ has ─ (Many) → Vote
+├─ (1) ─ has ─ (Many) → AudienceQueue
+├─ (1) ─ has ─ (Many) → TeamAssignment
+└─ (1) ─ has ─ (Many) → RoleHistory
 ```
 
 ---
@@ -170,8 +375,15 @@ totalDebaterCapacity = debater_capacity_panel
 | `User.username` | Must be unique across all users |
 | `Session.code` | Must be unique across all sessions |
 | `Session.moderator_id` | Optional; can be null initially |
+| `Session.format_locked` | Set to true when session status changes to LIVE (REQ-1.8) |
 | `ParticipatesIn.left_at` | null = actively in session |
 | `Session.ended_at` | null until session ends |
+| `Vote unique constraint` | Each user can cast only one vote of each type against each target per session |
+| `AudienceQueue unique constraint` | A user can only be in the queue once per session |
+| `TeamAssignment unique constraint` | A user can only be on one team per session |
+| `Transcript.timestamp` | Seconds since debate start, used for replay synchronization |
+| `Vote.vote_type` | Must be KICK or PROMOTE |
+| `TeamAssignment.team` | Must be "proponent" or "opponent" for TEAM format sessions |
 
 ---
 
@@ -186,6 +398,19 @@ totalDebaterCapacity = debater_capacity_panel
 │ email (String?)                                             │
 │ realname (String?)                                          │
 │ role (UniversalRole)                                        │
+│ bio (String?)                                               │
+│ notify_invitations (Boolean)                                │
+│ notify_messages (Boolean)                                   │
+│ notify_weekly_digest (Boolean)                              │
+│ profile_visibility (String)                                 │
+│ show_online_status (Boolean)                                │
+│ allow_direct_messages (Boolean)                             │
+│ theme (String)                                              │
+│ font_size (String)                                          │
+│ animations_enabled (Boolean)                                │
+│ language (String)                                           │
+│ timezone (String)                                           │
+│ date_format (String)                                        │
 │ created_at (DateTime)                                       │
 └─────────────────────────────────────────────────────────────┘
         │                                        │
@@ -208,6 +433,7 @@ totalDebaterCapacity = debater_capacity_panel
 │ debater_capacity_panel (Int?)                               │
 │ audience_capacity (Int)                                     │
 │ turn_length (Int)                                           │
+│ format_locked (Boolean)                                     │
 │ created_at (DateTime)                                       │
 │ ended_at (DateTime?)                                        │
 └─────────────────────────────────────────────────────────────┘
@@ -224,4 +450,75 @@ totalDebaterCapacity = debater_capacity_panel
 │ joined_at (DateTime)                                        │
 │ left_at (DateTime?)                                         │
 │ session_role (SessionRole)                                  │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                     Transcript                              │
+├─────────────────────────────────────────────────────────────┤
+│ id (String, PK, CUID)                                       │
+│ session_id (String, FK → Session)                           │
+│ speaker_id (UUID, FK → User)                                │
+│ content (String)                                            │
+│ timestamp (Float)                                           │
+│ duration (Float?)                                           │
+│ confidence (Float?)                                         │
+│ created_at (DateTime)                                       │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                     Recording                               │
+├─────────────────────────────────────────────────────────────┤
+│ id (String, PK, CUID)                                       │
+│ session_id (String, FK → Session)                           │
+│ recorded_by (UUID, FK → User)                               │
+│ url (String)                                                │
+│ duration (Float?)                                           │
+│ file_size (Int?)                                            │
+│ mime_type (String?)                                         │
+│ created_at (DateTime)                                       │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                        Vote                                 │
+├─────────────────────────────────────────────────────────────┤
+│ id (String, PK, CUID)                                       │
+│ session_id (String, FK → Session)                           │
+│ voter_id (UUID, FK → User)                                  │
+│ target_user_id (UUID, FK → User)                            │
+│ vote_type (VoteType)                                        │
+│ created_at (DateTime)                                       │
+│ UNIQUE (session_id, voter_id, target_user_id, vote_type)   │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                   AudienceQueue                             │
+├─────────────────────────────────────────────────────────────┤
+│ id (String, PK, CUID)                                       │
+│ session_id (String, FK → Session)                           │
+│ user_id (UUID, FK → User)                                   │
+│ joined_queue (DateTime)                                     │
+│ UNIQUE (session_id, user_id)                                │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                  TeamAssignment                             │
+├─────────────────────────────────────────────────────────────┤
+│ id (String, PK, CUID)                                       │
+│ session_id (String, FK → Session)                           │
+│ user_id (UUID, FK → User)                                   │
+│ team (String)                                               │
+│ assigned_at (DateTime)                                      │
+│ UNIQUE (session_id, user_id)                                │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                    RoleHistory                              │
+├─────────────────────────────────────────────────────────────┤
+│ id (String, PK, CUID)                                       │
+│ session_id (String, FK → Session)                           │
+│ user_id (UUID, FK → User)                                   │
+│ old_role (SessionRole)                                      │
+│ new_role (SessionRole)                                      │
+│ changed_at (DateTime)                                       │
+│ reason (String?)                                            │
 └─────────────────────────────────────────────────────────────┘

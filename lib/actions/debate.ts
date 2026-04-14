@@ -2,25 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
-
-async function requireModerator(sessionId: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-  })
-  if (!session) throw new Error("Session not found")
-
-  const allowed =
-    session.moderator_id === user.id || session.host_id === user.id
-  if (!allowed) throw new Error("Not authorized")
-
-  return { user, session }
-}
+import { requireHostOrModerator } from "@/lib/actions/utils"
 
 export async function getDebateState(sessionId: string) {
   const state = await prisma.debateState.findUnique({
@@ -46,7 +28,7 @@ export async function startDebate(
   debaters: { userId: string; displayName: string }[],
   turnLength: number
 ) {
-  await requireModerator(sessionId)
+  await requireHostOrModerator(sessionId)
   if (debaters.length !== 2) throw new Error("Exactly 2 debaters required")
 
   const now = Date.now()
@@ -73,7 +55,7 @@ export async function startDebate(
 }
 
 export async function advanceTurn(sessionId: string) {
-  await requireModerator(sessionId)
+  await requireHostOrModerator(sessionId)
 
   const state = await prisma.debateState.findUnique({
     where: { session_id: sessionId },
@@ -122,7 +104,7 @@ export async function advanceTurnIfExpired(sessionId: string) {
 }
 
 export async function pauseDebate(sessionId: string) {
-  await requireModerator(sessionId)
+  await requireHostOrModerator(sessionId)
 
   const state = await prisma.debateState.findUnique({
     where: { session_id: sessionId },
@@ -145,7 +127,7 @@ export async function pauseDebate(sessionId: string) {
 }
 
 export async function resumeDebate(sessionId: string) {
-  await requireModerator(sessionId)
+  await requireHostOrModerator(sessionId)
 
   const state = await prisma.debateState.findUnique({
     where: { session_id: sessionId },
@@ -163,8 +145,34 @@ export async function resumeDebate(sessionId: string) {
   })
 }
 
-export async function endDebate(sessionId: string) {
+export async function extendTurn(sessionId: string, extraSeconds: number) {
   await requireModerator(sessionId)
+
+  const state = await prisma.debateState.findUnique({
+    where: { session_id: sessionId },
+  })
+  if (!state) throw new Error("No active debate")
+
+  if (state.is_paused) {
+    await prisma.debateState.update({
+      where: { session_id: sessionId },
+      data: {
+        paused_time_remaining: state.paused_time_remaining + extraSeconds,
+      },
+    })
+  } else {
+    if (!state.turn_ends_at) throw new Error("No active turn")
+    await prisma.debateState.update({
+      where: { session_id: sessionId },
+      data: {
+        turn_ends_at: state.turn_ends_at + extraSeconds * 1000,
+      },
+    })
+  }
+}
+
+export async function endDebate(sessionId: string) {
+  await requireHostOrModerator(sessionId)
   await prisma.debateState
     .delete({ where: { session_id: sessionId } })
     .catch(() => {})

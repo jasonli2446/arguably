@@ -27,6 +27,7 @@ interface UseMediasoupReturn {
   toggleMute: () => void
   toggleVideo: () => void
   disconnect: () => void
+  reconnect: () => void
 }
 
 // Socket.io emit with ack helper
@@ -54,6 +55,7 @@ export function useMediasoup({
   const [reconnectingPeers, setReconnectingPeers] = useState<Set<string>>(new Set())
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoOff, setVideoOff] = useState(false)
+  const [reconnectTrigger, setReconnectTrigger] = useState(0)
 
   const socketRef = useRef<any>(null)
   const deviceRef = useRef<any>(null)
@@ -139,6 +141,12 @@ export function useMediasoup({
       setVideoOff((prev) => !prev)
     }
   }, [])
+
+  const reconnect = useCallback(() => {
+    cleanup()
+    cleanedUpRef.current = false
+    setReconnectTrigger((n) => n + 1)
+  }, [cleanup])
 
   useEffect(() => {
     if (!enabled || !sfuUrl || !roomId || !displayName) {
@@ -482,7 +490,7 @@ export function useMediasoup({
       cancelled = true
       cleanup()
     }
-  }, [enabled, sfuUrl, roomId, displayName, cleanup])
+  }, [enabled, sfuUrl, roomId, displayName, cleanup, reconnectTrigger])
 
   return {
     connectionState,
@@ -494,5 +502,6 @@ export function useMediasoup({
     toggleMute,
     toggleVideo,
     disconnect,
+    reconnect,
   }
 }
