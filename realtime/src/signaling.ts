@@ -1,6 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { Server as SocketIOServer, Socket } from "socket.io";
-import type { Peer } from "./types.js";
+import type {
+  Peer,
+  JoinDebateRoomRequest,
+  StartDebateRequest,
+  NextTurnRequest,
+  PauseDebateRequest,
+  ResumeDebateRequest,
+  EndDebateRequest,
+  GetDebateStateRequest,
+} from "./types.js";
 import { iceServers } from "./config.js";
 import { getOrCreateRoom, addPeerToRoom, removePeerFromRoom, getRoom } from "./mediasoup/rooms.js";
 import { createWebRtcTransport, getTransportOptions } from "./mediasoup/transports.js";
@@ -8,10 +17,22 @@ import { createProducer } from "./mediasoup/producers.js";
 import { createConsumer } from "./mediasoup/consumers.js";
 import type { RtpCapabilities } from "mediasoup/types";
 import { schemas, validatePayload } from "./validation.js";
+import {
+  startDebate,
+  advanceTurn,
+  pauseDebate,
+  resumeDebate,
+  endDebate,
+  getOrLoadState,
+  checkAuthorization,
+  handleSpeakerDisconnect,
+} from "./debate.js";
 
 // Track which room each socket is in
 const socketRoomMap = new Map<string, string>();
 const socketPeerMap = new Map<string, { rtpCapabilities: RtpCapabilities }>();
+const socketUserMap = new Map<string, string>();
+const socketDebateRoomMap = new Map<string, string>();
 
 // ── Reconnection state ──
 const RECONNECT_GRACE_MS = 30_000;
@@ -64,6 +85,10 @@ export function setupSignaling(io: SocketIOServer): void {
   io.on("connection", (socket: Socket) => {
     console.log(`Socket connected [id:${socket.id}]`);
 
+    // Extract userId from auth handshake
+    const authUserId = (socket.handshake.auth as Record<string, unknown>)?.userId as string | undefined;
+    if (authUserId) socketUserMap.set(socket.id, authUserId);
+
     // ── getRouterRtpCapabilities ──
     socket.on("getRouterRtpCapabilities", async (data: unknown, callback) => {
       try {
@@ -97,6 +122,7 @@ export function setupSignaling(io: SocketIOServer): void {
           id: socket.id,
           stablePeerId,
           displayName,
+          userId: authUserId,
           state: "connected",
           transports: new Map(),
           producers: new Map(),
@@ -488,6 +514,94 @@ export function setupSignaling(io: SocketIOServer): void {
         callback({ success: true, producers });
       } catch (error) {
         console.error("getProducers error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ══════════════════════════════════════════
+    // ── DEBATE EVENTS ──
+    // ══════════════════════════════════════════
+
+    socket.on("joinDebateRoom", (data: JoinDebateRoomRequest, callback) => {
+      try {
+        socket.join(data.roomCode);
+        socketDebateRoomMap.set(socket.id, data.roomCode);
+        callback({ success: true });
+      } catch (error) {
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    socket.on("startDebate", async (data: StartDebateRequest, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized");
+        const result = await startDebate(data.roomCode, data.debaters, data.turnLength, data.format, data.formatMeta ?? null, io);
+        callback(result);
+      } catch (error) {
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    socket.on("nextTurn", async (data: NextTurnRequest, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized");
+        const result = await advanceTurn(data.roomCode, "MANUAL_ADVANCE", io, data.version);
+        callback(result);
+      } catch (error) {
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    socket.on("pauseDebate", async (data: PauseDebateRequest, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized");
+        const result = await pauseDebate(data.roomCode, io);
+        callback(result);
+      } catch (error) {
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    socket.on("resumeDebate", async (data: ResumeDebateRequest, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized");
+        const result = await resumeDebate(data.roomCode, io);
+        callback(result);
+      } catch (error) {
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    socket.on("endDebate", async (data: EndDebateRequest, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized");
+        const result = await endDebate(data.roomCode, io);
+        callback(result);
+      } catch (error) {
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    socket.on("getDebateState", async (data: GetDebateStateRequest, callback) => {
+      try {
+        const state = await getOrLoadState(data.roomCode, io);
+        callback({ success: true, state });
+      } catch (error) {
         callback({ success: false, error: String(error) });
       }
     });

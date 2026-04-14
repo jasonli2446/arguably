@@ -12,9 +12,11 @@
     "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
+    "@types/pg": "^8.20.0",
     "dotenv": "^16.4.7",
     "jose": "^6.2.2",
     "mediasoup": "^3.19.0",
+    "pg": "^8.20.0",
     "socket.io": "^4.8.0",
     "zod": "^4.3.6"
   },

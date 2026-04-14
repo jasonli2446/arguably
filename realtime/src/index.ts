@@ -8,6 +8,7 @@ import { setupSignaling, getGracePeriodCount } from "./signaling.js";
 import { getRoomCount, getAllRoomStats } from "./mediasoup/rooms.js";
 import { LISTEN_PORT } from "./config.js";
 import { createAuthMiddleware } from "./auth.js";
+import { recoverDebates } from "./debate.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -126,6 +127,9 @@ io.use(createAuthMiddleware());
 async function main(): Promise<void> {
   await createWorkers();
   setupSignaling(io);
+
+  // Recover any active debates from DB (after server restart)
+  await recoverDebates(io);
 
   server.listen(LISTEN_PORT, "0.0.0.0", () => {
     console.log(`\nArguably Realtime SFU running`);

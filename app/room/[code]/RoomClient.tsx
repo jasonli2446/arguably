@@ -119,7 +119,8 @@ export default function RoomClient({
   })
 
   const debate = useDebateChannel({
-    sessionId: session.id,
+    sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
+    roomCode: session.code,
     userId: currentUserId,
   })
 
@@ -315,9 +316,9 @@ export default function RoomClient({
       if (isExpertVsCrowd) {
         // Expert vs Crowd: pass only the expert (host), backend auto-promotes from queue
         const expert = debaterList.find((d) => d.userId === session.host.id) ?? debaterList[0]
-        await debate.startDebate([expert], session.turnLength)
+        await debate.startDebate([expert], session.turnLength, session.type)
       } else if (debaterList.length >= 2) {
-        await debate.startDebate(debaterList, session.turnLength)
+        await debate.startDebate(debaterList, session.turnLength, session.type)
       }
 
       await updateSessionStatus(session.id, SessionStatus.LIVE)
