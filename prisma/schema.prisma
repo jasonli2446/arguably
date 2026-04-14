@@ -43,16 +43,37 @@ enum VoteType {
 
 // ── Models ──
 
+
 model User {
-  id          String        @id @db.Uuid
-  username    String        @unique
-  email       String?
-  realname    String?
-  bio         String?
-  preferences Json?
-  deleted_at  DateTime?
-  role        UniversalRole @default(USER)
-  created_at  DateTime      @default(now())
+  id         String        @id @db.Uuid
+  username   String        @unique
+  email      String?
+  realname   String?
+  role       UniversalRole @default(USER)
+  created_at DateTime      @default(now())
+
+  // Profile
+  bio String?
+
+  // Notification preferences
+  notify_invitations   Boolean @default(true)
+  notify_messages      Boolean @default(true)
+  notify_weekly_digest Boolean @default(false)
+
+  // Privacy preferences
+  profile_visibility    String  @default("public")
+  show_online_status    Boolean @default(true)
+  allow_direct_messages Boolean @default(true)
+
+  // Appearance preferences
+  theme              String  @default("dark")
+  font_size          String  @default("medium")
+  animations_enabled Boolean @default(true)
+
+  // Language & region preferences
+  language    String @default("en")
+  timezone    String @default("UTC")
+  date_format String @default("MM/DD/YYYY")
 
   // Relations
   hosted_sessions    Session[]        @relation("HostToSession")
@@ -94,6 +115,7 @@ model Session {
   debater_capacity_panel     Int?          @default(5)
   audience_capacity          Int           @default(10)
   turn_length                Int           @default(120)
+  kick_threshold             Int           @default(50)
   /// Whether the debate format is locked (true after debate begins, per REQ-1.8)
   format_locked              Boolean       @default(false)
   created_at                 DateTime      @default(now())
@@ -164,6 +186,7 @@ model Recording {
 }
 
 /// Audience vote to kick or promote a participant (REQ-4)
+
 model Vote {
   id             String   @id @default(cuid())
   session_id     String

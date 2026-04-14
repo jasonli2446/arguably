@@ -42,6 +42,7 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
     debaterCapacityOpponent: session.debater_capacity_opponent,
     debaterCapacityPanel: session.debater_capacity_panel,
     audienceCapacity: session.audience_capacity,
+    kickThreshold: session.kick_threshold,
     host: {
       id: session.host.id,
       username: session.host.username,
