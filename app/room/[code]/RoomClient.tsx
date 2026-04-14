@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
   Users,
@@ -13,21 +13,27 @@ import {
   Pause,
   Play,
   SkipForward,
+  Timer,
   Volume2,
   Video,
   VideoOff,
   Settings,
   Loader2,
-  Swords
+  Swords,
+  ArrowUp,
+  RefreshCw,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useMediasoup } from '@/hooks/useMediasoup'
 import { useDebateChannel } from '@/hooks/useDebateChannel'
 import { createClient } from '@/lib/supabase/client'
 import VideoPanel from '@/components/VideoPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { userStub, getInitials, formatTime } from '@/lib/utils'
-import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater, kickParticipant, assignModerator } from '@/lib/actions/session'
+import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater, kickParticipant, assignModerator, promoteToDebater } from '@/lib/actions/session'
+import { extendTurn } from '@/lib/actions/debate'
 import { useRouter } from 'next/navigation'
 import { SessionRole, SessionStatus, SessionType } from '@/lib/generated/prisma'
 
@@ -63,10 +69,25 @@ export default function RoomClient({
   currentUsername: string
 }) {
   const router = useRouter()
-  const [isPaused, setIsPaused] = useState(session.status === SessionStatus.PAUSED)
-  const [timeRemaining, setTimeRemaining] = useState(session.turnLength)
   const [isJoining, setIsJoining] = useState(false)
   const [showDebaterOptions, setShowDebaterOptions] = useState(false)
+
+  // Loading states for async operations
+  const [isStarting, setIsStarting] = useState(false)
+  const [isPauseToggling, setIsPauseToggling] = useState(false)
+  const [isEnding, setIsEnding] = useState(false)
+  const [isAdvancingTurn, setIsAdvancingTurn] = useState(false)
+  const [isExtendingTurn, setIsExtendingTurn] = useState(false)
+  const [isAssigningModerator, setIsAssigningModerator] = useState<string | null>(null)
+  const [isKicking, setIsKicking] = useState<string | null>(null)
+  const [isPromoting, setIsPromoting] = useState<string | null>(null)
+
+  // Confirmation dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    type: 'kick' | 'end' | 'moderator' | 'promote'
+    targetUserId?: string
+    targetName?: string
+  } | null>(null)
 
   const isModeratorOrCreator = currentRole === SessionRole.MODERATOR || currentRole === SessionRole.HOST
   const isHost = currentRole === SessionRole.HOST
@@ -82,6 +103,7 @@ export default function RoomClient({
     toggleMute,
     toggleVideo,
     disconnect: disconnectSfu,
+    reconnect: reconnectSfu,
   } = useMediasoup({
     sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
     roomId: session.code,
@@ -93,6 +115,18 @@ export default function RoomClient({
     sessionId: session.id,
     userId: currentUserId,
   })
+
+  // Derive isPaused from debate channel (authoritative source via Supabase Realtime)
+  const isPaused = debate.isPaused || session.status === SessionStatus.PAUSED
+
+  // Toast on video connection error
+  const prevConnectionState = useRef(connectionState)
+  useEffect(() => {
+    if (prevConnectionState.current !== 'error' && connectionState === 'error') {
+      toast.error('Video connection failed')
+    }
+    prevConnectionState.current = connectionState
+  }, [connectionState])
 
   // Refresh page when participants change (via Supabase Realtime)
   useEffect(() => {
@@ -126,6 +160,7 @@ export default function RoomClient({
         }
       } catch (err) {
         console.error('Auto-join failed:', err)
+        toast.error('Failed to join room automatically')
       }
     }
     autoJoin()
@@ -148,9 +183,6 @@ export default function RoomClient({
   }, [isParticipant, session.id])
 
   // Filter participants by role
-  const moderators = session.participatesIns.filter(
-    (p) => p.sessionRole === SessionRole.MODERATOR || p.sessionRole === SessionRole.HOST
-  )
   const debaters = session.participatesIns.filter(
     (p) => p.sessionRole === SessionRole.DEBATER || p.sessionRole === SessionRole.HOST
   )
@@ -176,12 +208,12 @@ export default function RoomClient({
     currentRole === SessionRole.AUDIENCE && canJoinAsDebater
 
   // Check proponent/opponent specific availability
-  const proponentsFull = 
-    session.type !== SessionType.PANEL && 
+  const proponentsFull =
+    session.type !== SessionType.PANEL &&
     (session.debaterCapacityProponent ?? 0) > 0 &&
     debaters.filter(d => d.sessionRole === SessionRole.DEBATER).length >= (session.debaterCapacityProponent ?? 0)
-  
-  const opponentsFull = 
+
+  const opponentsFull =
     session.type !== SessionType.PANEL &&
     (session.debaterCapacityOpponent ?? 0) > 0 &&
     debaters.filter(d => d.sessionRole === SessionRole.DEBATER).length >= totalDebaterCapacity
@@ -192,52 +224,56 @@ export default function RoomClient({
       ? debate.timeRemaining
       : session.turnLength
 
-  // Timer countdown
-  useEffect(() => {
-    if (!isPaused && session.status === SessionStatus.LIVE) {
-      const interval = setInterval(() => {
-        setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0))
-      }, 1000)
-      return () => clearInterval(interval)
-    }
-  }, [isPaused, session.status])
+  // --- Handlers with toast + loading ---
 
   async function handleLeave() {
     disconnectSfu()
     try {
       await leaveSession(session.id)
-      router.push('/browse')
     } catch (err) {
       console.error('Failed to leave:', err)
-      router.push('/browse')
+      toast.error('Failed to leave session')
     }
+    router.push('/browse')
   }
 
   async function handleTogglePause() {
+    setIsPauseToggling(true)
     try {
       if (isPaused) {
         await debate.resume()
         await updateSessionStatus(session.id, 'LIVE')
+        toast.success('Debate resumed')
       } else {
         await debate.pause()
         await updateSessionStatus(session.id, 'PAUSED')
+        toast.success('Debate paused')
       }
     } catch (err) {
       console.error('Failed to toggle pause:', err)
+      toast.error('Failed to toggle pause')
+    } finally {
+      setIsPauseToggling(false)
     }
   }
 
   async function handleEndSession() {
+    setIsEnding(true)
     try {
       await debate.endDebate()
       await updateSessionStatus(session.id, SessionStatus.ENDED)
+      toast.success('Session ended')
       router.push('/browse')
     } catch (err) {
       console.error('Failed to end session:', err)
+      toast.error('Failed to end session')
+    } finally {
+      setIsEnding(false)
     }
   }
 
   async function handleStartSession() {
+    setIsStarting(true)
     try {
       await updateSessionStatus(session.id, 'LIVE')
 
@@ -252,9 +288,13 @@ export default function RoomClient({
       }
 
       await updateSessionStatus(session.id, SessionStatus.LIVE)
+      toast.success('Debate started')
       router.refresh()
     } catch (err) {
       console.error('Failed to start session:', err)
+      toast.error('Failed to start debate')
+    } finally {
+      setIsStarting(false)
     }
   }
 
@@ -262,9 +302,11 @@ export default function RoomClient({
     setIsJoining(true)
     try {
       await joinSessionAsDebater(session.id, isProponent)
+      toast.success('Joined as debater')
       router.refresh()
     } catch (err) {
       console.error('Failed to upgrade to debater:', err)
+      toast.error('Failed to join as debater')
     } finally {
       setIsJoining(false)
       setShowDebaterOptions(false)
@@ -272,28 +314,92 @@ export default function RoomClient({
   }
 
   async function handleAssignModerator(userId: string) {
+    setIsAssigningModerator(userId)
     try {
       await assignModerator(session.id, userId)
+      toast.success('Moderator assigned')
       router.refresh()
     } catch (err) {
       console.error('Failed to assign moderator:', err)
+      toast.error('Failed to assign moderator')
+    } finally {
+      setIsAssigningModerator(null)
     }
   }
 
   async function handleNextTurn() {
+    setIsAdvancingTurn(true)
     try {
       await debate.nextTurn()
+      toast.success('Turn advanced')
     } catch (err) {
       console.error('Failed to advance turn:', err)
+      toast.error('Failed to advance turn')
+    } finally {
+      setIsAdvancingTurn(false)
+    }
+  }
+
+  async function handleExtendTurn() {
+    setIsExtendingTurn(true)
+    try {
+      await extendTurn(session.id, 30)
+      toast.success('Turn extended by 30s')
+    } catch (err) {
+      console.error('Failed to extend turn:', err)
+      toast.error('Failed to extend turn')
+    } finally {
+      setIsExtendingTurn(false)
     }
   }
 
   async function handleKick(userId: string) {
+    setIsKicking(userId)
     try {
       await kickParticipant(session.id, userId)
+      toast.success('Participant removed')
       router.refresh()
     } catch (err) {
       console.error('Failed to kick participant:', err)
+      toast.error('Failed to remove participant')
+    } finally {
+      setIsKicking(null)
+    }
+  }
+
+  async function handlePromote(userId: string) {
+    setIsPromoting(userId)
+    try {
+      await promoteToDebater(session.id, userId)
+      toast.success('Participant promoted to debater')
+      router.refresh()
+    } catch (err) {
+      console.error('Failed to promote participant:', err)
+      toast.error('Failed to promote participant')
+    } finally {
+      setIsPromoting(null)
+    }
+  }
+
+  // Confirmation dialog handler
+  async function handleConfirmAction() {
+    if (!confirmDialog) return
+    const { type, targetUserId } = confirmDialog
+    setConfirmDialog(null)
+
+    switch (type) {
+      case 'kick':
+        if (targetUserId) await handleKick(targetUserId)
+        break
+      case 'end':
+        await handleEndSession()
+        break
+      case 'moderator':
+        if (targetUserId) await handleAssignModerator(targetUserId)
+        break
+      case 'promote':
+        if (targetUserId) await handlePromote(targetUserId)
+        break
     }
   }
 
@@ -325,6 +431,34 @@ export default function RoomClient({
     : displayTime <= 30
     ? 'text-orange-400'
     : 'text-white'
+
+  // Confirm dialog config
+  const confirmDialogConfig = confirmDialog ? {
+    kick: {
+      title: 'KICK PARTICIPANT',
+      description: `Remove ${confirmDialog.targetName} from this session? They can rejoin if the room is still open.`,
+      confirmLabel: 'KICK',
+      variant: 'destructive' as const,
+    },
+    end: {
+      title: 'END SESSION',
+      description: 'End the debate for all participants? This action cannot be undone.',
+      confirmLabel: 'END SESSION',
+      variant: 'destructive' as const,
+    },
+    moderator: {
+      title: 'ASSIGN MODERATOR',
+      description: `Promote ${confirmDialog.targetName} to moderator? The current moderator will be demoted to audience.`,
+      confirmLabel: 'PROMOTE',
+      variant: 'default' as const,
+    },
+    promote: {
+      title: 'PROMOTE TO DEBATER',
+      description: `Promote ${confirmDialog.targetName} from audience to debater?`,
+      confirmLabel: 'PROMOTE',
+      variant: 'default' as const,
+    },
+  }[confirmDialog.type] : null
 
   return (
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
@@ -418,9 +552,16 @@ export default function RoomClient({
                             <Button
                               className="debate-button bg-red-600 text-white border-red-700"
                               onClick={handleStartSession}
-                              disabled={!canStartDebate}
+                              disabled={!canStartDebate || isStarting}
                             >
-                              START DEBATE
+                              {isStarting ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  STARTING...
+                                </>
+                              ) : (
+                                'START DEBATE'
+                              )}
                             </Button>
                           )}
                         </div>
@@ -505,7 +646,16 @@ export default function RoomClient({
                                 <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-red-600/50 flex items-center justify-center">
                                   <div className="text-center">
                                     <VideoOff className="w-10 h-10 text-red-400/60 mx-auto mb-2" />
-                                    <p className="text-red-400/60 debate-mono text-sm">VIDEO CONNECTION FAILED</p>
+                                    <p className="text-red-400/60 debate-mono text-sm mb-3">VIDEO CONNECTION FAILED</p>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="debate-button"
+                                      onClick={reconnectSfu}
+                                    >
+                                      <RefreshCw className="w-4 h-4 mr-2" />
+                                      RETRY CONNECTION
+                                    </Button>
                                   </div>
                                 </div>
                               ) : connectionState === 'connected' ? (
@@ -702,8 +852,15 @@ export default function RoomClient({
                         size="sm"
                         onClick={handleTogglePause}
                         className="debate-button col-span-2"
+                        disabled={isPauseToggling}
                       >
-                        {isPaused ? <Play className="w-4 h-4 mr-2" /> : <Pause className="w-4 h-4 mr-2" />}
+                        {isPauseToggling ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : isPaused ? (
+                          <Play className="w-4 h-4 mr-2" />
+                        ) : (
+                          <Pause className="w-4 h-4 mr-2" />
+                        )}
                         {isPaused ? 'RESUME' : 'PAUSE'}
                       </Button>
                       <Button
@@ -711,16 +868,39 @@ export default function RoomClient({
                         size="sm"
                         className="debate-button"
                         onClick={handleNextTurn}
+                        disabled={isAdvancingTurn}
                       >
-                        <SkipForward className="w-4 h-4 mr-1" />
+                        {isAdvancingTurn ? (
+                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        ) : (
+                          <SkipForward className="w-4 h-4 mr-1" />
+                        )}
                         NEXT
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         className="debate-button"
-                        onClick={handleEndSession}
+                        onClick={handleExtendTurn}
+                        disabled={isExtendingTurn}
                       >
+                        {isExtendingTurn ? (
+                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        ) : (
+                          <Timer className="w-4 h-4 mr-1" />
+                        )}
+                        +30s
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="debate-button col-span-2"
+                        onClick={() => setConfirmDialog({ type: 'end' })}
+                        disabled={isEnding}
+                      >
+                        {isEnding ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : null}
                         END
                       </Button>
                     </div>
@@ -737,8 +917,19 @@ export default function RoomClient({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4 h-64 overflow-y-auto">
-                  <div className="h-full flex items-center justify-center">
-                    <p className="text-gray-500 debate-mono text-sm">Transcript will appear here during the debate</p>
+                  <div className="h-full flex flex-col items-center justify-center space-y-3">
+                    <div className="w-12 h-12 border-2 border-dashed border-white/20 flex items-center justify-center">
+                      <MessageSquare className="w-6 h-6 text-white/20" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-white/40 debate-title text-sm mb-1">COMING SOON</p>
+                      <p className="text-gray-500 debate-mono text-xs max-w-[200px]">
+                        Live transcription will be available in a future update
+                      </p>
+                    </div>
+                    <span className="debate-badge bg-gray-800 text-gray-400 text-[10px]">
+                      PLANNED FEATURE
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -765,26 +956,64 @@ export default function RoomClient({
                             {displayName(person.user)}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <span className="text-xs debate-mono text-gray-400">
                             {person.sessionRole}
                           </span>
-                          {isHost && person.userId !== currentUserId && person.sessionRole !== SessionRole.MODERATOR && (
+                          {/* Promote audience to debater (WAITING only) */}
+                          {isModeratorOrCreator && person.userId !== currentUserId && person.sessionRole === SessionRole.AUDIENCE && session.status === SessionStatus.WAITING && canJoinAsDebater && (
                             <button
-                              onClick={() => handleAssignModerator(person.userId)}
-                              className="text-blue-400 hover:text-blue-300 text-xs opacity-60 hover:opacity-100"
-                              title="Assign as moderator"
+                              onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user) })}
+                              className="text-green-400 hover:text-green-300 text-xs opacity-60 hover:opacity-100"
+                              title="Promote to debater"
+                              disabled={isPromoting === person.userId}
                             >
-                              MOD
+                              {isPromoting === person.userId ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <ArrowUp className="w-3 h-3" />
+                              )}
                             </button>
                           )}
+                          {/* Mute stub for debaters */}
+                          {isModeratorOrCreator && person.userId !== currentUserId && (person.sessionRole === SessionRole.DEBATER || person.sessionRole === SessionRole.HOST) && session.status !== SessionStatus.WAITING && (
+                            <button
+                              onClick={() => toast.info('Remote mute is not yet supported. Ask the participant to mute themselves.')}
+                              className="text-yellow-400 hover:text-yellow-300 text-xs opacity-60 hover:opacity-100"
+                              title="Mute participant (coming soon)"
+                            >
+                              {/* TODO: Implement server-side mute via SFU pauseProducer */}
+                              <MicOff className="w-3 h-3" />
+                            </button>
+                          )}
+                          {/* Assign moderator */}
+                          {isHost && person.userId !== currentUserId && person.sessionRole !== SessionRole.MODERATOR && (
+                            <button
+                              onClick={() => setConfirmDialog({ type: 'moderator', targetUserId: person.userId, targetName: displayName(person.user) })}
+                              className="text-blue-400 hover:text-blue-300 text-xs opacity-60 hover:opacity-100"
+                              title="Assign as moderator"
+                              disabled={isAssigningModerator === person.userId}
+                            >
+                              {isAssigningModerator === person.userId ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                'MOD'
+                              )}
+                            </button>
+                          )}
+                          {/* Kick participant */}
                           {isModeratorOrCreator && person.userId !== currentUserId && (
                             <button
-                              onClick={() => handleKick(person.userId)}
+                              onClick={() => setConfirmDialog({ type: 'kick', targetUserId: person.userId, targetName: displayName(person.user) })}
                               className="text-red-400 hover:text-red-300 text-xs ml-1 opacity-60 hover:opacity-100"
                               title="Kick participant"
+                              disabled={isKicking === person.userId}
                             >
-                              ✕
+                              {isKicking === person.userId ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                '✕'
+                              )}
                             </button>
                           )}
                         </div>
@@ -797,6 +1026,20 @@ export default function RoomClient({
           </div>
         </div>
       </main>
+
+      {/* Confirmation Dialog */}
+      {confirmDialogConfig && (
+        <ConfirmDialog
+          open={confirmDialog !== null}
+          onOpenChange={(open) => { if (!open) setConfirmDialog(null) }}
+          title={confirmDialogConfig.title}
+          description={confirmDialogConfig.description}
+          confirmLabel={confirmDialogConfig.confirmLabel}
+          variant={confirmDialogConfig.variant}
+          loading={isEnding || isKicking !== null || isAssigningModerator !== null || isPromoting !== null}
+          onConfirm={handleConfirmAction}
+        />
+      )}
     </div>
   )
 }

@@ -22,6 +22,7 @@ vi.mock('@/lib/prisma', () => ({
       create: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }))
@@ -35,6 +36,7 @@ import {
   joinSessionAsDebater,
   leaveSession,
   updateSessionStatus,
+  promoteToDebater,
 } from '@/lib/actions/session'
 
 // Helper to set up auth mock
@@ -432,5 +434,80 @@ describe('updateSessionStatus', () => {
     expect(call.data.status).toBe(SessionStatus.ENDED)
     expect(call.data.ended_at).toBeInstanceOf(Date)
     expect(call.data.ended_at.getTime()).toBeGreaterThanOrEqual(before)
+  })
+})
+
+// ── promoteToDebater ──
+describe('promoteToDebater', () => {
+  const TARGET_USER_ID = 'target-user-uuid'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAuth(MOCK_USER_ID)
+    ;(prisma.participatesIn.update as any).mockResolvedValue({})
+  })
+
+  function mockSessionForPromote(overrides: Record<string, unknown> = {}) {
+    ;(prisma.session.findUnique as any).mockResolvedValue({
+      id: MOCK_SESSION_ID,
+      host_id: MOCK_USER_ID,
+      moderator_id: null,
+      status: SessionStatus.WAITING,
+      ...overrides,
+    })
+  }
+
+  it('throws if not authenticated', async () => {
+    mockAuth(null)
+    await expect(promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)).rejects.toThrow('Not authenticated')
+  })
+
+  it('throws if session not found', async () => {
+    ;(prisma.session.findUnique as any).mockResolvedValue(null)
+    await expect(promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)).rejects.toThrow('Session not found')
+  })
+
+  it('throws if caller is not host or moderator', async () => {
+    mockSessionForPromote({ host_id: 'other-user', moderator_id: null })
+    await expect(promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)).rejects.toThrow('Only moderators or hosts')
+  })
+
+  it('throws if session is not in WAITING status', async () => {
+    mockSessionForPromote({ status: SessionStatus.LIVE })
+    await expect(promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)).rejects.toThrow('Can only promote participants before the debate starts')
+  })
+
+  it('throws if trying to promote yourself', async () => {
+    mockSessionForPromote()
+    await expect(promoteToDebater(MOCK_SESSION_ID, MOCK_USER_ID)).rejects.toThrow('Cannot promote yourself')
+  })
+
+  it('updates participant role to DEBATER', async () => {
+    mockSessionForPromote()
+    await promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)
+    expect(prisma.participatesIn.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          user_id_session_id: { user_id: TARGET_USER_ID, session_id: MOCK_SESSION_ID },
+        }),
+        data: expect.objectContaining({ session_role: SessionRole.DEBATER }),
+      })
+    )
+  })
+
+  it('allows moderator to promote', async () => {
+    mockSessionForPromote({ host_id: 'some-host', moderator_id: MOCK_USER_ID })
+    await promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)
+    expect(prisma.participatesIn.update).toHaveBeenCalled()
+  })
+
+  it('throws when session is PAUSED', async () => {
+    mockSessionForPromote({ status: SessionStatus.PAUSED })
+    await expect(promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)).rejects.toThrow('Can only promote participants before the debate starts')
+  })
+
+  it('throws when session is ENDED', async () => {
+    mockSessionForPromote({ status: SessionStatus.ENDED })
+    await expect(promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)).rejects.toThrow('Can only promote participants before the debate starts')
   })
 })
