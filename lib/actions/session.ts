@@ -23,9 +23,11 @@ export async function createSession(formData: {
 
     if (!formData.name.trim()) throw new Error("Room name is required")
 
-    // Validate capacities
+    // Validate capacities and bounds
     if (formData.audienceCapacity < 0) throw new Error("Audience capacity cannot be negative")
+    if (formData.audienceCapacity > 1000) throw new Error("Audience capacity cannot exceed 1000")
     if (formData.turnLength < 1) throw new Error("Turn length must be at least 1 second")
+    if (formData.turnLength > 1800) throw new Error("Turn length cannot exceed 30 minutes (1800 seconds)")
 
     // Panel-specific validation
     if (formData.type === SessionType.PANEL) {
@@ -269,6 +271,8 @@ export async function joinSessionAsDebater(sessionId: string, isProponent: boole
         },
     })
 
+    const previousRole = existing?.session_role ?? SessionRole.AUDIENCE
+
     if (existing) {
         await prisma.participatesIn.update({
             where: {
@@ -288,6 +292,17 @@ export async function joinSessionAsDebater(sessionId: string, isProponent: boole
             },
         })
     }
+
+    // Log role transition
+    await prisma.roleHistory.create({
+        data: {
+            session_id: sessionId,
+            user_id: user.id,
+            old_role: previousRole,
+            new_role: SessionRole.DEBATER,
+            reason: "Joined as debater",
+        },
+    })
 }
 
 export async function leaveSession(sessionId: string) {
@@ -319,15 +334,37 @@ export async function assignModerator(sessionId: string, targetUserId: string) {
   if (session.host_id !== user.id) throw new Error("Only the host can assign a moderator")
   if (targetUserId === user.id) throw new Error("Host cannot assign themselves as moderator")
 
-  // Demote previous moderator back to AUDIENCE (if any)
-  if (session.moderator_id && session.moderator_id !== targetUserId) {
-    await prisma.participatesIn.updateMany({
-      where: { session_id: sessionId, user_id: session.moderator_id },
-      data: { session_role: SessionRole.AUDIENCE },
-    })
+  // Verify target is an active participant and get role for history logging
+  const targetParticipation = await prisma.participatesIn.findUnique({
+    where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
+    select: { session_role: true, left_at: true },
+  })
+  if (!targetParticipation || targetParticipation.left_at !== null) {
+    throw new Error("Target user is not an active participant in this session")
   }
 
-  await prisma.$transaction([
+  const txOps = []
+
+  // Demote previous moderator back to AUDIENCE (if any)
+  if (session.moderator_id && session.moderator_id !== targetUserId) {
+    txOps.push(
+      prisma.participatesIn.updateMany({
+        where: { session_id: sessionId, user_id: session.moderator_id },
+        data: { session_role: SessionRole.AUDIENCE },
+      }),
+      prisma.roleHistory.create({
+        data: {
+          session_id: sessionId,
+          user_id: session.moderator_id,
+          old_role: SessionRole.MODERATOR,
+          new_role: SessionRole.AUDIENCE,
+          reason: "Demoted: new moderator assigned",
+        },
+      })
+    )
+  }
+
+  txOps.push(
     prisma.session.update({
       where: { id: sessionId },
       data: { moderator_id: targetUserId },
@@ -336,7 +373,18 @@ export async function assignModerator(sessionId: string, targetUserId: string) {
       where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
       data: { session_role: SessionRole.MODERATOR },
     }),
-  ])
+    prisma.roleHistory.create({
+      data: {
+        session_id: sessionId,
+        user_id: targetUserId,
+        old_role: targetParticipation.session_role,
+        new_role: SessionRole.MODERATOR,
+        reason: "Assigned as moderator by host",
+      },
+    })
+  )
+
+  await prisma.$transaction(txOps)
 }
 
 export async function kickParticipant(sessionId: string, targetUserId: string) {
@@ -356,6 +404,15 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
   // Cannot kick yourself
   if (targetUserId === user.id) throw new Error("Cannot kick yourself")
 
+  // Verify target is an active participant and get role for history logging
+  const participation = await prisma.participatesIn.findUnique({
+    where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
+    select: { session_role: true, left_at: true },
+  })
+  if (!participation || participation.left_at !== null) {
+    throw new Error("Target user is not an active participant in this session")
+  }
+
   await prisma.participatesIn.update({
     where: {
       user_id_session_id: {
@@ -365,6 +422,18 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
     },
     data: { left_at: new Date() },
   })
+
+  if (participation) {
+    await prisma.roleHistory.create({
+      data: {
+        session_id: sessionId,
+        user_id: targetUserId,
+        old_role: participation.session_role,
+        new_role: SessionRole.AUDIENCE,
+        reason: "Kicked by moderator/host",
+      },
+    })
+  }
 }
 
 export async function promoteToDebater(sessionId: string, targetUserId: string) {
@@ -419,6 +488,10 @@ export async function updateSessionStatus(sessionId: string, status: SessionStat
 
     const data : Prisma.SessionUpdateInput = { }
     data.status = status
+
+    if (status === SessionStatus.LIVE) {
+        data.format_locked = true
+    }
 
     if (status === SessionStatus.ENDED) {
         data.ended_at = new Date()

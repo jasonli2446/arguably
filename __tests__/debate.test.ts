@@ -14,6 +14,10 @@ vi.mock('@/lib/prisma', () => ({
       updateMany: vi.fn(),
       delete: vi.fn(),
     },
+    participatesIn: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+    },
   },
 }))
 
@@ -59,7 +63,10 @@ const debaters = [
 
 // ── getDebateState ──
 describe('getDebateState', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAuth('any-user')
+  })
 
   it('returns null when no state exists', async () => {
     ;(prisma.debateState.findUnique as any).mockResolvedValue(null)
@@ -91,6 +98,11 @@ describe('startDebate', () => {
     mockAuth(MOCK_HOST_ID)
     mockSession()
     ;(prisma.debateState.upsert as any).mockResolvedValue({})
+    // Mock: both debaters are active participants
+    ;(prisma.participatesIn.findMany as any).mockResolvedValue([
+      { user_id: 'u1' },
+      { user_id: 'u2' },
+    ])
   })
 
   it('throws if not authenticated', async () => {
@@ -180,6 +192,12 @@ describe('advanceTurnIfExpired', () => {
     vi.clearAllMocks()
     mockAuth('any-user')
     ;(prisma.debateState.updateMany as any).mockResolvedValue({ count: 1 })
+    // Mock: user is an active participant
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+      user_id: 'any-user',
+      session_id: MOCK_SESSION_ID,
+      left_at: null,
+    })
   })
 
   it('does nothing if unauthenticated', async () => {
@@ -315,6 +333,118 @@ describe('endDebate', () => {
   it('does not throw if debate state already gone', async () => {
     ;(prisma.debateState.delete as any).mockRejectedValue(new Error('not found'))
     await expect(endDebate(MOCK_SESSION_ID)).resolves.not.toThrow()
+  })
+})
+
+// ── Security: getDebateState auth check ──
+describe('getDebateState — security', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('throws if not authenticated', async () => {
+    mockAuth(null)
+    await expect(getDebateState(MOCK_SESSION_ID)).rejects.toThrow('Not authenticated')
+  })
+
+  it('returns state when authenticated', async () => {
+    mockAuth('any-user')
+    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+      session_id: MOCK_SESSION_ID,
+      debater_order: debaters,
+      current_index: 0,
+      turn_length: 120,
+      turn_ends_at: 9999999,
+      is_paused: false,
+      paused_time_remaining: 0,
+    })
+    const result = await getDebateState(MOCK_SESSION_ID)
+    expect(result).not.toBeNull()
+    expect(result?.session_id).toBe(MOCK_SESSION_ID)
+  })
+})
+
+// ── Security: startDebate input validation ──
+describe('startDebate — security', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAuth(MOCK_HOST_ID)
+    mockSession()
+    ;(prisma.debateState.upsert as any).mockResolvedValue({})
+    ;(prisma.participatesIn.findMany as any).mockResolvedValue([
+      { user_id: 'u1' },
+      { user_id: 'u2' },
+    ])
+  })
+
+  it('throws if turnLength is less than 1', async () => {
+    await expect(startDebate(MOCK_SESSION_ID, debaters, 0)).rejects.toThrow(
+      'Turn length must be at least 1 second'
+    )
+  })
+
+  it('throws if turnLength exceeds 1800', async () => {
+    await expect(startDebate(MOCK_SESSION_ID, debaters, 1801)).rejects.toThrow(
+      'Turn length cannot exceed 30 minutes'
+    )
+  })
+
+  it('allows turnLength of exactly 1', async () => {
+    await expect(startDebate(MOCK_SESSION_ID, debaters, 1)).resolves.not.toThrow()
+  })
+
+  it('allows turnLength of exactly 1800', async () => {
+    await expect(startDebate(MOCK_SESSION_ID, debaters, 1800)).resolves.not.toThrow()
+  })
+
+  it('throws if debater IDs are not active participants', async () => {
+    ;(prisma.participatesIn.findMany as any).mockResolvedValue([
+      { user_id: 'u1' },
+    ])
+    await expect(startDebate(MOCK_SESSION_ID, debaters, 120)).rejects.toThrow(
+      'is not an active participant'
+    )
+  })
+
+  it('succeeds when both debaters are active participants', async () => {
+    await expect(startDebate(MOCK_SESSION_ID, debaters, 120)).resolves.not.toThrow()
+    expect(prisma.debateState.upsert).toHaveBeenCalled()
+  })
+})
+
+// ── Security: advanceTurnIfExpired participant check ──
+describe('advanceTurnIfExpired — security', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAuth('any-user')
+    ;(prisma.debateState.updateMany as any).mockResolvedValue({ count: 1 })
+  })
+
+  it('does nothing if user is not a participant', async () => {
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue(null)
+    await advanceTurnIfExpired(MOCK_SESSION_ID)
+    expect(prisma.debateState.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('does nothing if user has left the session', async () => {
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+      user_id: 'any-user',
+      session_id: MOCK_SESSION_ID,
+      left_at: new Date(),
+    })
+    await advanceTurnIfExpired(MOCK_SESSION_ID)
+    expect(prisma.debateState.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('advances turn when user is active participant and turn expired', async () => {
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+      user_id: 'any-user',
+      session_id: MOCK_SESSION_ID,
+      left_at: null,
+    })
+    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+      is_paused: false, turn_ends_at: Date.now() - 2000, current_index: 0, turn_length: 60,
+    })
+    await advanceTurnIfExpired(MOCK_SESSION_ID)
+    expect(prisma.debateState.updateMany).toHaveBeenCalled()
   })
 })
 

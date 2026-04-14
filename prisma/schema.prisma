@@ -7,6 +7,8 @@ datasource db {
   provider = "postgresql"
 }
 
+// ── Enums ──
+
 enum UniversalRole {
   ADMIN
   USER
@@ -33,20 +35,36 @@ enum SessionStatus {
   ENDED
 }
 
-model User {
-  id         String        @id @db.Uuid
-  username   String        @unique
-  email      String?
-  realname   String?
-  bio        String?
-  preferences Json?
-  deleted_at DateTime?
-  role       UniversalRole @default(USER)
-  created_at DateTime      @default(now())
+/// Type of vote cast by audience members
+enum VoteType {
+  KICK
+  PROMOTE
+}
 
+// ── Models ──
+
+model User {
+  id          String        @id @db.Uuid
+  username    String        @unique
+  email       String?
+  realname    String?
+  bio         String?
+  preferences Json?
+  deleted_at  DateTime?
+  role        UniversalRole @default(USER)
+  created_at  DateTime      @default(now())
+
+  // Relations
   hosted_sessions    Session[]        @relation("HostToSession")
   moderated_sessions Session[]        @relation("ModeratorToSession")
   participates_ins   ParticipatesIn[]
+  transcripts        Transcript[]
+  recordings         Recording[]
+  votes_cast         Vote[]           @relation("VoterToVote")
+  votes_received     Vote[]           @relation("TargetToVote")
+  audience_queues    AudienceQueue[]
+  team_assignments   TeamAssignment[]
+  role_history       RoleHistory[]
 }
 
 model ParticipatesIn {
@@ -76,6 +94,8 @@ model Session {
   debater_capacity_panel     Int?          @default(5)
   audience_capacity          Int           @default(10)
   turn_length                Int           @default(120)
+  /// Whether the debate format is locked (true after debate begins, per REQ-1.8)
+  format_locked              Boolean       @default(false)
   created_at                 DateTime      @default(now())
   ended_at                   DateTime?
 
@@ -83,6 +103,12 @@ model Session {
   moderator        User?            @relation("ModeratorToSession", fields: [moderator_id], references: [id])
   participates_ins ParticipatesIn[]
   debate_state     DebateState?
+  transcripts      Transcript[]
+  recordings       Recording[]
+  votes            Vote[]
+  audience_queue   AudienceQueue[]
+  team_assignments TeamAssignment[]
+  role_history     RoleHistory[]
 }
 
 model DebateState {
@@ -96,4 +122,110 @@ model DebateState {
   paused_time_remaining Float   @default(0)
 
   session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+}
+
+/// Speaker-attributed, timestamped transcript segment (REQ-6)
+model Transcript {
+  id         String   @id @default(cuid())
+  session_id String
+  speaker_id String   @db.Uuid
+  content    String
+  /// Seconds since debate start
+  timestamp  Float
+  /// Duration of this speech segment in seconds
+  duration   Float?
+  /// Confidence score from the transcription engine (0.0 - 1.0)
+  confidence Float?
+  created_at DateTime @default(now())
+
+  session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  speaker User    @relation(fields: [speaker_id], references: [id])
+
+  @@index([session_id, timestamp])
+}
+
+/// Video recording link for a completed session (REQ-8)
+model Recording {
+  id          String   @id @default(cuid())
+  session_id  String
+  recorded_by String   @db.Uuid
+  url         String
+  /// Duration in seconds
+  duration    Float?
+  /// File size in bytes
+  file_size   Int?
+  mime_type   String?
+  created_at  DateTime @default(now())
+
+  session  Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  recorder User    @relation(fields: [recorded_by], references: [id])
+
+  @@index([session_id])
+}
+
+/// Audience vote to kick or promote a participant (REQ-4)
+model Vote {
+  id             String   @id @default(cuid())
+  session_id     String
+  voter_id       String   @db.Uuid
+  target_user_id String   @db.Uuid
+  vote_type      VoteType
+  created_at     DateTime @default(now())
+
+  session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  voter   User    @relation("VoterToVote", fields: [voter_id], references: [id])
+  target  User    @relation("TargetToVote", fields: [target_user_id], references: [id])
+
+  /// Each user can only cast one vote of each type against each target per session
+  @@unique([session_id, voter_id, target_user_id, vote_type])
+  @@index([session_id])
+}
+
+/// FIFO queue for audience members waiting to speak (REQ-4)
+model AudienceQueue {
+  id           String   @id @default(cuid())
+  session_id   String
+  user_id      String   @db.Uuid
+  joined_queue DateTime @default(now())
+
+  session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id])
+
+  /// A user can only be in the queue once per session
+  @@unique([session_id, user_id])
+  @@index([session_id])
+}
+
+/// Team membership for team debates
+model TeamAssignment {
+  id          String   @id @default(cuid())
+  session_id  String
+  user_id     String   @db.Uuid
+  /// Team identifier: "proponent" or "opponent"
+  team        String
+  assigned_at DateTime @default(now())
+
+  session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id])
+
+  /// A user can only be on one team per session
+  @@unique([session_id, user_id])
+  @@index([session_id])
+}
+
+/// Tracks role transitions with timestamps for audit purposes (REQ-2.8)
+model RoleHistory {
+  id         String      @id @default(cuid())
+  session_id String
+  user_id    String      @db.Uuid
+  old_role   SessionRole
+  new_role   SessionRole
+  changed_at DateTime    @default(now())
+  reason     String?
+
+  session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id])
+
+  @@index([session_id])
+  @@index([user_id])
 }

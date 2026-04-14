@@ -43,6 +43,18 @@ vi.mock('mediasoup-client', () => ({
   Device: vi.fn(() => mockDevice),
 }))
 
+// ── Mock Supabase client (for auth token) ──
+
+vi.mock('@/lib/supabase/client', () => ({
+  createClient: vi.fn(() => ({
+    auth: {
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: { access_token: 'mock-jwt-token' } },
+      }),
+    },
+  })),
+}))
+
 // ── Mock getUserMedia ──
 
 const mockVideoTrack = {
