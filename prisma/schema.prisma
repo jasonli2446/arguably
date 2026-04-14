@@ -38,6 +38,9 @@ model User {
   username   String        @unique
   email      String?
   realname   String?
+  bio        String?
+  preferences Json?
+  deleted_at DateTime?
   role       UniversalRole @default(USER)
   created_at DateTime      @default(now())
 

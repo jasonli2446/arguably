@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import AuthSync from "@/components/AuthSync";
-import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,7 +16,6 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <AuthSync />
-        <Toaster />
         {children}
       </body>
     </html>
