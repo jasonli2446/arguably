@@ -26,6 +26,7 @@ interface UseMediasoupReturn {
   toggleMute: () => void
   toggleVideo: () => void
   disconnect: () => void
+  reconnect: () => void
 }
 
 // Socket.io emit with ack helper
@@ -52,6 +53,7 @@ export function useMediasoup({
   const [remoteStreams, setRemoteStreams] = useState<Map<string, RemoteStream>>(new Map())
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoOff, setVideoOff] = useState(false)
+  const [reconnectTrigger, setReconnectTrigger] = useState(0)
 
   const socketRef = useRef<any>(null)
   const deviceRef = useRef<any>(null)
@@ -132,6 +134,12 @@ export function useMediasoup({
       setVideoOff((prev) => !prev)
     }
   }, [])
+
+  const reconnect = useCallback(() => {
+    cleanup()
+    cleanedUpRef.current = false
+    setReconnectTrigger((n) => n + 1)
+  }, [cleanup])
 
   useEffect(() => {
     if (!enabled || !sfuUrl || !roomId || !displayName) {
@@ -231,6 +239,16 @@ export function useMediasoup({
             localStreamRef.current = stream
             setLocalStream(stream)
 
+            // Start 15s timeout after getUserMedia (not before, since permission dialog can take arbitrarily long)
+            const connectionTimeout = setTimeout(() => {
+              if (!cancelled) {
+                console.error('SFU connection timed out after 15s')
+                cleanup()
+                cleanedUpRef.current = false
+                setConnectionState('error')
+              }
+            }, 15000)
+
             const videoTrack = stream.getVideoTracks()[0]
             if (videoTrack) {
               const videoProducer = await sendTransport.produce({ track: videoTrack })
@@ -249,6 +267,7 @@ export function useMediasoup({
               await consumeProducer(socket, recvTransport, p.producerId)
             }
 
+            clearTimeout(connectionTimeout)
             setConnectionState('connected')
           } catch (err: any) {
             console.error('SFU setup error:', err)
@@ -355,7 +374,7 @@ export function useMediasoup({
       cancelled = true
       cleanup()
     }
-  }, [enabled, sfuUrl, roomId, displayName, cleanup])
+  }, [enabled, sfuUrl, roomId, displayName, cleanup, reconnectTrigger])
 
   return {
     connectionState,
@@ -366,5 +385,6 @@ export function useMediasoup({
     toggleMute,
     toggleVideo,
     disconnect,
+    reconnect,
   }
 }
