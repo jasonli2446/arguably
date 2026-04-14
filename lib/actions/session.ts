@@ -23,9 +23,11 @@ export async function createSession(formData: {
 
     if (!formData.name.trim()) throw new Error("Room name is required")
 
-    // Validate capacities
+    // Validate capacities and bounds
     if (formData.audienceCapacity < 0) throw new Error("Audience capacity cannot be negative")
+    if (formData.audienceCapacity > 1000) throw new Error("Audience capacity cannot exceed 1000")
     if (formData.turnLength < 1) throw new Error("Turn length must be at least 1 second")
+    if (formData.turnLength > 1800) throw new Error("Turn length cannot exceed 30 minutes (1800 seconds)")
 
     // Panel-specific validation
     if (formData.type === SessionType.PANEL) {
@@ -319,6 +321,14 @@ export async function assignModerator(sessionId: string, targetUserId: string) {
   if (session.host_id !== user.id) throw new Error("Only the host can assign a moderator")
   if (targetUserId === user.id) throw new Error("Host cannot assign themselves as moderator")
 
+  // Verify target is an active participant
+  const targetParticipation = await prisma.participatesIn.findUnique({
+    where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
+  })
+  if (!targetParticipation || targetParticipation.left_at !== null) {
+    throw new Error("Target user is not an active participant in this session")
+  }
+
   // Demote previous moderator back to AUDIENCE (if any)
   if (session.moderator_id && session.moderator_id !== targetUserId) {
     await prisma.participatesIn.updateMany({
@@ -355,6 +365,14 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
   }
   // Cannot kick yourself
   if (targetUserId === user.id) throw new Error("Cannot kick yourself")
+
+  // Verify target is an active participant
+  const targetParticipation = await prisma.participatesIn.findUnique({
+    where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
+  })
+  if (!targetParticipation || targetParticipation.left_at !== null) {
+    throw new Error("Target user is not an active participant in this session")
+  }
 
   await prisma.participatesIn.update({
     where: {
