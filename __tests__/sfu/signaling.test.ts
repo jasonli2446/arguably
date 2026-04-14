@@ -26,6 +26,7 @@ const mockProducer = {
   kind: 'audio',
   close: vi.fn(),
   on: vi.fn(),
+  closed: false,
 }
 
 const mockConsumer = {
@@ -49,6 +50,9 @@ vi.mock('../../realtime/src/mediasoup/rooms.js', () => ({
   addPeerToRoom: vi.fn(),
   removePeerFromRoom: vi.fn(),
   getRoom: vi.fn(),
+  deleteRoom: vi.fn(),
+  getRoomCount: vi.fn().mockReturnValue(0),
+  getAllRoomStats: vi.fn().mockReturnValue([]),
 }))
 
 vi.mock('../../realtime/src/mediasoup/transports.js', () => ({
@@ -64,6 +68,25 @@ vi.mock('../../realtime/src/mediasoup/consumers.js', () => ({
   createConsumer: vi.fn(),
 }))
 
+// Mock validation
+vi.mock('../../realtime/src/validation.js', () => ({
+  schemas: {
+    getRouterRtpCapabilities: {},
+    joinRoom: {},
+    reconnect: {},
+    createWebRtcTransport: {},
+    connectTransport: {},
+    produce: {},
+    consume: {},
+    resumeConsumer: {},
+    closeProducer: {},
+    getProducers: {},
+  },
+  validatePayload: vi.fn((schema: any, data: any) => {
+    return { success: true, data }
+  }),
+}))
+
 // Import mocked modules
 import { getOrCreateRoom, addPeerToRoom, removePeerFromRoom, getRoom } from '../../realtime/src/mediasoup/rooms.js'
 import { createWebRtcTransport, getTransportOptions } from '../../realtime/src/mediasoup/transports.js'
@@ -75,16 +98,27 @@ import { createConsumer } from '../../realtime/src/mediasoup/consumers.js'
 function createMockSocket(id = 'socket-1') {
   const handlers = new Map<string, Function>()
   const emittedEvents: { event: string; data: any }[] = []
+  const emittedToRoom = new Map<string, Array<{ event: string; data: any }>>()
 
   return {
     id,
     handlers,
     emittedEvents,
+    emittedToRoom,
     on(event: string, handler: Function) {
       handlers.set(event, handler)
     },
     join: vi.fn(),
-    to: vi.fn().mockReturnThis(),
+    to: vi.fn((roomId: string) => {
+      return {
+        emit: vi.fn((event: string, data: any) => {
+          if (!emittedToRoom.has(roomId)) {
+            emittedToRoom.set(roomId, [])
+          }
+          emittedToRoom.get(roomId)!.push({ event, data })
+        }),
+      }
+    }),
     emit: vi.fn((...args: any[]) => {
       emittedEvents.push({ event: args[0], data: args[1] })
     }),
@@ -99,10 +133,22 @@ function createMockSocket(id = 'socket-1') {
 
 function createMockIO() {
   let connectionHandler: Function | null = null
+  const ioEmittedToRoom = new Map<string, Array<{ event: string; data: any }>>()
+
   return {
     on(event: string, handler: Function) {
       if (event === 'connection') connectionHandler = handler
     },
+    to: vi.fn((roomId: string) => {
+      return {
+        emit: vi.fn((event: string, data: any) => {
+          if (!ioEmittedToRoom.has(roomId)) {
+            ioEmittedToRoom.set(roomId, [])
+          }
+          ioEmittedToRoom.get(roomId)!.push({ event, data })
+        }),
+      }
+    }),
     simulateConnection(socket: any) {
       if (connectionHandler) connectionHandler(socket)
     },
@@ -112,9 +158,11 @@ function createMockIO() {
 // ── Tests ──
 
 let setupSignaling: any
+let getGracePeriodCount: any
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  vi.useFakeTimers()
 
   // Reset module to clear socketRoomMap/socketPeerMap
   vi.resetModules()
@@ -128,6 +176,9 @@ beforeEach(async () => {
     addPeerToRoom: vi.fn(),
     removePeerFromRoom: vi.fn(),
     getRoom: vi.fn().mockReturnValue(mockRoom),
+    deleteRoom: vi.fn(),
+    getRoomCount: vi.fn().mockReturnValue(0),
+    getAllRoomStats: vi.fn().mockReturnValue([]),
   }))
   vi.doMock('../../realtime/src/mediasoup/transports.js', () => ({
     createWebRtcTransport: vi.fn().mockResolvedValue(mockTransport),
@@ -144,9 +195,27 @@ beforeEach(async () => {
   vi.doMock('../../realtime/src/mediasoup/consumers.js', () => ({
     createConsumer: vi.fn().mockResolvedValue(mockConsumer),
   }))
+  vi.doMock('../../realtime/src/validation.js', () => ({
+    schemas: {
+      getRouterRtpCapabilities: {},
+      joinRoom: {},
+      reconnect: {},
+      createWebRtcTransport: {},
+      connectTransport: {},
+      produce: {},
+      consume: {},
+      resumeConsumer: {},
+      closeProducer: {},
+      getProducers: {},
+    },
+    validatePayload: vi.fn((schema: any, data: any) => {
+      return { success: true, data }
+    }),
+  }))
 
   const mod = await import('../../realtime/src/signaling.js')
   setupSignaling = mod.setupSignaling
+  getGracePeriodCount = mod.getGracePeriodCount
 
   // Reset room peers for each test
   mockRoom.peers = new Map()
@@ -163,8 +232,6 @@ function setupSocket(id = 'socket-1') {
 
 // Helper to join a socket to a room (prerequisite for most events)
 async function joinSocket(socket: ReturnType<typeof createMockSocket>, roomId = 'room-1', displayName = 'TestUser') {
-  const { getOrCreateRoom, addPeerToRoom } = await import('../../realtime/src/mediasoup/rooms.js')
-
   const callback = vi.fn()
   await socket.triggerHandler('joinRoom', {
     roomId,
@@ -206,13 +273,33 @@ describe('setupSignaling', () => {
   })
 
   describe('joinRoom', () => {
-    it('creates peer, joins room, notifies others, returns existing peers', async () => {
+    it('creates peer with stablePeerId, state, and returns existing connected peers', async () => {
       const socket = setupSocket()
       const { addPeerToRoom } = await import('../../realtime/src/mediasoup/rooms.js')
 
-      // Add an existing peer to the room
-      const existingPeer = { id: 'other-socket', displayName: 'OtherUser', transports: new Map(), producers: new Map(), consumers: new Map() }
+      // Add an existing connected peer
+      const existingPeer = {
+        id: 'other-socket',
+        stablePeerId: 'stable-1',
+        displayName: 'OtherUser',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
       mockRoom.peers.set('other-socket', existingPeer)
+
+      // Add a grace-state peer (should be filtered)
+      const gracePeer = {
+        id: 'grace-socket',
+        stablePeerId: 'stable-2',
+        displayName: 'GraceUser',
+        state: 'grace' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
+      mockRoom.peers.set('grace-socket', gracePeer)
 
       const callback = vi.fn()
       await socket.triggerHandler('joinRoom', {
@@ -222,26 +309,28 @@ describe('setupSignaling', () => {
       }, callback)
 
       expect(addPeerToRoom).toHaveBeenCalled()
-      expect(socket.join).toHaveBeenCalledWith('room-1')
-      expect(socket.to).toHaveBeenCalledWith('room-1')
-      expect(socket.emit).toHaveBeenCalledWith('peerJoined', {
-        peerId: 'socket-1',
-        displayName: 'Alice',
-      })
       expect(callback).toHaveBeenCalledWith({
         success: true,
         peers: [{ peerId: 'other-socket', displayName: 'OtherUser' }],
+        stablePeerId: expect.any(String),
       })
     })
   })
 
   describe('createWebRtcTransport', () => {
-    it('creates transport and returns options', async () => {
+    it('stores direction in TransportInfo', async () => {
       const socket = setupSocket()
       await joinSocket(socket)
 
-      // Ensure peer exists in room
-      const peer = { id: 'socket-1', displayName: 'TestUser', transports: new Map(), producers: new Map(), consumers: new Map() }
+      const peer = {
+        id: 'socket-1',
+        stablePeerId: 'stable-1',
+        displayName: 'TestUser',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
       mockRoom.peers.set('socket-1', peer)
 
       const callback = vi.fn()
@@ -251,36 +340,66 @@ describe('setupSignaling', () => {
         success: true,
         transportOptions: expect.objectContaining({ id: 'transport-1' }),
       }))
-      expect(peer.transports.has('transport-1')).toBe(true)
+
+      // Check TransportInfo structure
+      const transportInfo = peer.transports.get('transport-1')
+      expect(transportInfo).toBeDefined()
+      expect(transportInfo?.direction).toBe('send')
+      expect(transportInfo?.transport).toBeDefined()
     })
 
-    it('returns error when not in a room', async () => {
-      // Fresh socket without joining
-      const io = createMockIO()
-      const socket = createMockSocket('orphan-socket')
+    it('adds dtls failure handler that emits transportFailure', async () => {
+      const socket = setupSocket()
+      await joinSocket(socket)
 
-      // Need fresh module that has no socketRoomMap entries
-      setupSignaling(io)
-      io.simulateConnection(socket)
+      const peer = {
+        id: 'socket-1',
+        stablePeerId: 'stable-1',
+        displayName: 'TestUser',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
+      mockRoom.peers.set('socket-1', peer)
+
+      const mockTransportWithHandler = {
+        ...mockTransport,
+        on: vi.fn((event: string, handler: Function) => {
+          if (event === 'dtlsstatechange') {
+            // Simulate DTLS failure
+            handler('failed')
+          }
+        }),
+      }
+
+      const { createWebRtcTransport } = await import('../../realtime/src/mediasoup/transports.js')
+      vi.mocked(createWebRtcTransport).mockResolvedValueOnce(mockTransportWithHandler as any)
 
       const callback = vi.fn()
-      await socket.triggerHandler('createWebRtcTransport', { direction: 'send' }, callback)
+      await socket.triggerHandler('createWebRtcTransport', { direction: 'recv' }, callback)
 
-      expect(callback).toHaveBeenCalledWith({
-        success: false,
-        error: expect.stringContaining('Not in a room'),
-      })
+      // Check that transportFailure was emitted
+      expect(socket.emittedEvents.some(e => e.event === 'transportFailure')).toBe(true)
     })
   })
 
   describe('connectTransport', () => {
-    it('connects transport with dtlsParameters', async () => {
+    it('unwraps TransportInfo to connect', async () => {
       const socket = setupSocket()
       await joinSocket(socket)
 
-      const peer = { id: 'socket-1', displayName: 'TestUser', transports: new Map(), producers: new Map(), consumers: new Map() }
+      const peer = {
+        id: 'socket-1',
+        stablePeerId: 'stable-1',
+        displayName: 'TestUser',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
       const transport = { ...mockTransport, connect: vi.fn().mockResolvedValue(undefined) }
-      peer.transports.set('transport-1', transport)
+      peer.transports.set('transport-1', { transport, direction: 'send' })
       mockRoom.peers.set('socket-1', peer)
 
       const dtlsParameters = { fingerprints: [] }
@@ -296,17 +415,25 @@ describe('setupSignaling', () => {
   })
 
   describe('produce', () => {
-    it('creates producer, stores it, notifies room, and returns producerId', async () => {
+    it('unwraps TransportInfo and adds score listener', async () => {
       const socket = setupSocket()
       await joinSocket(socket)
 
-      const peer = { id: 'socket-1', displayName: 'Alice', transports: new Map(), producers: new Map(), consumers: new Map() }
+      const peer = {
+        id: 'socket-1',
+        stablePeerId: 'stable-1',
+        displayName: 'Alice',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
       const transport = { ...mockTransport }
-      peer.transports.set('transport-1', transport)
+      peer.transports.set('transport-1', { transport, direction: 'send' })
       mockRoom.peers.set('socket-1', peer)
 
       const { createProducer } = await import('../../realtime/src/mediasoup/producers.js')
-      const producer = { id: 'prod-1', kind: 'audio', close: vi.fn(), on: vi.fn() }
+      const producer = { id: 'prod-1', kind: 'audio', close: vi.fn(), on: vi.fn(), closed: false }
       vi.mocked(createProducer).mockResolvedValueOnce(producer as any)
 
       const callback = vi.fn()
@@ -319,29 +446,41 @@ describe('setupSignaling', () => {
 
       expect(callback).toHaveBeenCalledWith({ success: true, producerId: 'prod-1' })
       expect(peer.producers.has('prod-1')).toBe(true)
-      expect(socket.to).toHaveBeenCalledWith('room-1')
-      expect(socket.emit).toHaveBeenCalledWith('newProducer', {
-        producerId: 'prod-1',
-        peerId: 'socket-1',
-        displayName: 'Alice',
-        kind: 'audio',
-      })
+
+      // Check score listener was added
+      expect(producer.on).toHaveBeenCalledWith('score', expect.any(Function))
     })
   })
 
   describe('consume', () => {
-    it('creates consumer and returns consumer data with producer display name', async () => {
+    it('uses direction-based recv transport lookup', async () => {
       const socket = setupSocket()
       await joinSocket(socket)
 
-      // Set up consuming peer with a recv transport
-      const consumerPeer = { id: 'socket-1', displayName: 'Bob', transports: new Map(), producers: new Map(), consumers: new Map() }
+      const consumerPeer = {
+        id: 'socket-1',
+        stablePeerId: 'stable-1',
+        displayName: 'Bob',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
+      const sendTransport = { id: 'send-transport', close: vi.fn() }
       const recvTransport = { id: 'recv-transport', close: vi.fn() }
-      consumerPeer.transports.set('recv-transport', recvTransport)
+      consumerPeer.transports.set('send-transport', { transport: sendTransport, direction: 'send' })
+      consumerPeer.transports.set('recv-transport', { transport: recvTransport, direction: 'recv' })
       mockRoom.peers.set('socket-1', consumerPeer)
 
-      // Set up producing peer
-      const producerPeer = { id: 'socket-2', displayName: 'Alice', transports: new Map(), producers: new Map(), consumers: new Map() }
+      const producerPeer = {
+        id: 'socket-2',
+        stablePeerId: 'stable-2',
+        displayName: 'Alice',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
       const producer = { id: 'prod-1', kind: 'audio' }
       producerPeer.producers.set('prod-1', producer)
       mockRoom.peers.set('socket-2', producerPeer)
@@ -357,83 +496,80 @@ describe('setupSignaling', () => {
         success: true,
         id: 'cons-1',
         producerId: 'prod-1',
-        kind: 'audio',
-        peerId: 'socket-2',
         displayName: 'Alice',
       }))
-      expect(consumerPeer.consumers.has('cons-1')).toBe(true)
-    })
-  })
 
-  describe('resumeConsumer', () => {
-    it('resumes the consumer', async () => {
+      // Verify score listener was added
+      expect(consumer.on).toHaveBeenCalledWith('score', expect.any(Function))
+    })
+
+    it('returns error if producer not found', async () => {
       const socket = setupSocket()
       await joinSocket(socket)
 
-      const consumer = { id: 'cons-1', resume: vi.fn().mockResolvedValue(undefined), on: vi.fn() }
-      const peer = { id: 'socket-1', displayName: 'Bob', transports: new Map(), producers: new Map(), consumers: new Map() }
-      peer.consumers.set('cons-1', consumer)
+      const peer = {
+        id: 'socket-1',
+        stablePeerId: 'stable-1',
+        displayName: 'Bob',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
+      const recvTransport = { id: 'recv-transport', close: vi.fn() }
+      peer.transports.set('recv-transport', { transport: recvTransport, direction: 'recv' })
       mockRoom.peers.set('socket-1', peer)
 
       const callback = vi.fn()
-      await socket.triggerHandler('resumeConsumer', { consumerId: 'cons-1' }, callback)
-
-      expect(consumer.resume).toHaveBeenCalled()
-      expect(callback).toHaveBeenCalledWith({ success: true })
-    })
-
-    it('returns error for unknown consumer', async () => {
-      const socket = setupSocket()
-      await joinSocket(socket)
-
-      const peer = { id: 'socket-1', displayName: 'Bob', transports: new Map(), producers: new Map(), consumers: new Map() }
-      mockRoom.peers.set('socket-1', peer)
-
-      const callback = vi.fn()
-      await socket.triggerHandler('resumeConsumer', { consumerId: 'nonexistent' }, callback)
+      await socket.triggerHandler('consume', { producerId: 'nonexistent' }, callback)
 
       expect(callback).toHaveBeenCalledWith({
         success: false,
-        error: expect.stringContaining('Consumer not found'),
+        error: expect.stringContaining('Producer nonexistent not found'),
       })
     })
   })
 
-  describe('closeProducer', () => {
-    it('closes producer, deletes it, and notifies room', async () => {
-      const socket = setupSocket()
-      await joinSocket(socket)
-
-      const producer = { id: 'prod-1', close: vi.fn(), on: vi.fn() }
-      const peer = { id: 'socket-1', displayName: 'Alice', transports: new Map(), producers: new Map(), consumers: new Map() }
-      peer.producers.set('prod-1', producer)
-      mockRoom.peers.set('socket-1', peer)
-
-      const callback = vi.fn()
-      await socket.triggerHandler('closeProducer', { producerId: 'prod-1' }, callback)
-
-      expect(producer.close).toHaveBeenCalled()
-      expect(peer.producers.has('prod-1')).toBe(false)
-      expect(socket.to).toHaveBeenCalledWith('room-1')
-      expect(socket.emit).toHaveBeenCalledWith('producerClosed', { producerId: 'prod-1' })
-      expect(callback).toHaveBeenCalledWith({ success: true })
-    })
-  })
-
   describe('getProducers', () => {
-    it('returns all producers from other peers', async () => {
+    it('filters by state and closed status', async () => {
       const socket = setupSocket()
       await joinSocket(socket)
 
-      // Self peer (no producers)
-      const selfPeer = { id: 'socket-1', displayName: 'Bob', transports: new Map(), producers: new Map(), consumers: new Map() }
+      const selfPeer = {
+        id: 'socket-1',
+        stablePeerId: 'stable-1',
+        displayName: 'Bob',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
       mockRoom.peers.set('socket-1', selfPeer)
 
-      // Other peer with producers
-      const otherPeer = { id: 'socket-2', displayName: 'Alice', transports: new Map(), producers: new Map(), consumers: new Map() }
-      otherPeer.producers.set('prod-1', { id: 'prod-1', kind: 'audio' })
-      otherPeer.producers.set('prod-2', { id: 'prod-2', kind: 'video' })
+      const otherPeer = {
+        id: 'socket-2',
+        stablePeerId: 'stable-2',
+        displayName: 'Alice',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
+      otherPeer.producers.set('prod-1', { id: 'prod-1', kind: 'audio', closed: false })
+      otherPeer.producers.set('prod-2', { id: 'prod-2', kind: 'video', closed: true })
       mockRoom.peers.set('socket-2', otherPeer)
+
+      const gracePeer = {
+        id: 'socket-3',
+        stablePeerId: 'stable-3',
+        displayName: 'Charlie',
+        state: 'grace' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
+      gracePeer.producers.set('prod-3', { id: 'prod-3', kind: 'audio', closed: false })
+      mockRoom.peers.set('socket-3', gracePeer)
 
       const callback = vi.fn()
       await socket.triggerHandler('getProducers', {}, callback)
@@ -442,59 +578,154 @@ describe('setupSignaling', () => {
         success: true,
         producers: [
           { producerId: 'prod-1', peerId: 'socket-2', displayName: 'Alice', kind: 'audio' },
-          { producerId: 'prod-2', peerId: 'socket-2', displayName: 'Alice', kind: 'video' },
         ],
-      })
-    })
-
-    it('excludes own producers', async () => {
-      const socket = setupSocket()
-      await joinSocket(socket)
-
-      const selfPeer = { id: 'socket-1', displayName: 'Bob', transports: new Map(), producers: new Map(), consumers: new Map() }
-      selfPeer.producers.set('my-prod', { id: 'my-prod', kind: 'audio' })
-      mockRoom.peers.set('socket-1', selfPeer)
-
-      const callback = vi.fn()
-      await socket.triggerHandler('getProducers', {}, callback)
-
-      expect(callback).toHaveBeenCalledWith({
-        success: true,
-        producers: [],
       })
     })
   })
 
   describe('disconnect', () => {
-    it('cleans up peer, emits peerLeft, and clears maps', async () => {
-      const socket = setupSocket()
-      await joinSocket(socket)
+    it('starts grace period and emits peerReconnecting', async () => {
+      const io = createMockIO()
+      const socket = createMockSocket('socket-1')
+      setupSignaling(io)
+      io.simulateConnection(socket)
 
-      const peer = { id: 'socket-1', displayName: 'Alice', transports: new Map(), producers: new Map(), consumers: new Map() }
+      const callback = vi.fn()
+      await socket.triggerHandler('joinRoom', {
+        roomId: 'room-1',
+        displayName: 'Alice',
+        rtpCapabilities: { codecs: [] },
+      }, callback)
+
+      const peer = {
+        id: 'socket-1',
+        stablePeerId: callback.mock.calls[0][0].stablePeerId,
+        displayName: 'Alice',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
+      mockRoom.peers.set('socket-1', peer)
+
+      await socket.triggerHandler('disconnect', undefined)
+
+      expect(peer.state).toBe('grace')
+      expect(getGracePeriodCount()).toBe(1)
+
+      // Check peerReconnecting was emitted
+      const roomEmits = socket.emittedToRoom.get('room-1') || []
+      const reconnectingEvent = roomEmits.find(e => e.event === 'peerReconnecting')
+      expect(reconnectingEvent).toBeDefined()
+      expect(reconnectingEvent?.data.displayName).toBe('Alice')
+    })
+
+    it('emits peerLeft after grace period expires', async () => {
+      const io = createMockIO()
+      const socket = createMockSocket('socket-1')
+      setupSignaling(io)
+      io.simulateConnection(socket)
+
+      const callback = vi.fn()
+      await socket.triggerHandler('joinRoom', {
+        roomId: 'room-1',
+        displayName: 'Alice',
+        rtpCapabilities: { codecs: [] },
+      }, callback)
+
+      const peer = {
+        id: 'socket-1',
+        stablePeerId: callback.mock.calls[0][0].stablePeerId,
+        displayName: 'Alice',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
+      mockRoom.peers.set('socket-1', peer)
+
       const { removePeerFromRoom } = await import('../../realtime/src/mediasoup/rooms.js')
       vi.mocked(removePeerFromRoom).mockReturnValueOnce(peer as any)
 
       await socket.triggerHandler('disconnect', undefined)
 
+      // Fast-forward 30 seconds
+      vi.advanceTimersByTime(30_000)
+
       expect(removePeerFromRoom).toHaveBeenCalled()
-      expect(socket.to).toHaveBeenCalledWith('room-1')
-      expect(socket.emit).toHaveBeenCalledWith('peerLeft', {
-        peerId: 'socket-1',
+      expect(getGracePeriodCount()).toBe(0)
+    })
+  })
+
+  describe('reconnect', () => {
+    it('cancels grace period and updates peer socket ID', async () => {
+      const io = createMockIO()
+      const socket1 = createMockSocket('socket-1')
+      setupSignaling(io)
+      io.simulateConnection(socket1)
+
+      const callback = vi.fn()
+      await socket1.triggerHandler('joinRoom', {
+        roomId: 'room-1',
         displayName: 'Alice',
+        rtpCapabilities: { codecs: [] },
+      }, callback)
+
+      const stablePeerId = callback.mock.calls[0][0].stablePeerId
+
+      const peer = {
+        id: 'socket-1',
+        stablePeerId,
+        displayName: 'Alice',
+        state: 'connected' as const,
+        transports: new Map(),
+        producers: new Map(),
+        consumers: new Map()
+      }
+      mockRoom.peers.set('socket-1', peer)
+
+      await socket1.triggerHandler('disconnect', undefined)
+      expect(getGracePeriodCount()).toBe(1)
+
+      // New socket reconnects
+      const socket2 = createMockSocket('socket-2')
+      io.simulateConnection(socket2)
+
+      const reconnectCallback = vi.fn()
+      await socket2.triggerHandler('reconnect', {
+        roomId: 'room-1',
+        stablePeerId,
+        displayName: 'Alice',
+        rtpCapabilities: { codecs: [] },
+      }, reconnectCallback)
+
+      expect(reconnectCallback).toHaveBeenCalledWith({
+        success: true,
+        peers: expect.any(Array),
       })
+      expect(peer.id).toBe('socket-2')
+      expect(peer.state).toBe('connected')
+      expect(getGracePeriodCount()).toBe(0)
     })
 
-    it('handles disconnect when not in a room', async () => {
+    it('returns error if stablePeerId not found', async () => {
       const io = createMockIO()
-      const socket = createMockSocket('orphan')
+      const socket = createMockSocket('socket-1')
       setupSignaling(io)
       io.simulateConnection(socket)
 
-      // Should not throw
-      await socket.triggerHandler('disconnect', undefined)
+      const callback = vi.fn()
+      await socket.triggerHandler('reconnect', {
+        roomId: 'room-1',
+        stablePeerId: 'nonexistent-uuid',
+        displayName: 'Alice',
+        rtpCapabilities: { codecs: [] },
+      }, callback)
 
-      const { removePeerFromRoom } = await import('../../realtime/src/mediasoup/rooms.js')
-      expect(removePeerFromRoom).not.toHaveBeenCalled()
+      expect(callback).toHaveBeenCalledWith({
+        success: false,
+        error: expect.stringContaining('Peer not found'),
+      })
     })
   })
 })

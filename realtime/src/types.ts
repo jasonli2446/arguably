@@ -13,10 +13,19 @@ import type {
 
 // ── Peer & Room ──
 
+export interface TransportInfo {
+  transport: Transport;
+  direction: "send" | "recv";
+}
+
+export type PeerState = "connected" | "grace" | "closed";
+
 export interface Peer {
   id: string;
+  stablePeerId: string;
   displayName: string;
-  transports: Map<string, Transport>;
+  state: PeerState;
+  transports: Map<string, TransportInfo>;
   producers: Map<string, Producer>;
   consumers: Map<string, Consumer>;
 }
@@ -61,6 +70,31 @@ export interface ResumeConsumerRequest {
 
 export interface CloseProducerRequest {
   producerId: string;
+}
+
+// ── Reconnection payloads ──
+
+export interface ReconnectRequest {
+  roomId: string;
+  stablePeerId: string;
+  displayName: string;
+  rtpCapabilities: RtpCapabilities;
+}
+
+export interface TransportFailureNotification {
+  transportId: string;
+  direction: "send" | "recv" | "unknown";
+  reason: string;
+}
+
+export interface PeerReconnectingNotification {
+  peerId: string;
+  displayName: string;
+}
+
+export interface PeerReconnectedNotification {
+  peerId: string;
+  displayName: string;
 }
 
 // ── Server → Client payloads ──

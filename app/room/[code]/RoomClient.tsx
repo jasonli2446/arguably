@@ -98,6 +98,7 @@ export default function RoomClient({
     connectionState,
     localStream,
     remoteStreams,
+    reconnectingPeers,
     audioMuted,
     videoOff,
     toggleMute,
@@ -642,6 +643,13 @@ export default function RoomClient({
                                     <p className="text-white/40 debate-mono text-sm">CONNECTING TO VIDEO...</p>
                                   </div>
                                 </div>
+                              ) : connectionState === 'reconnecting' ? (
+                                <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-yellow-600/50 flex items-center justify-center">
+                                  <div className="text-center">
+                                    <Loader2 className="w-10 h-10 text-yellow-400/60 mx-auto mb-2 animate-spin" />
+                                    <p className="text-yellow-400/60 debate-mono text-sm">RECONNECTING TO VIDEO...</p>
+                                  </div>
+                                </div>
                               ) : connectionState === 'error' ? (
                                 <div className="min-h-[250px] bg-gradient-to-br from-gray-900 to-gray-700 rounded-md border-2 border-red-600/50 flex items-center justify-center">
                                   <div className="text-center">
@@ -682,7 +690,7 @@ export default function RoomClient({
                             </div>
 
                             {/* Audio/Video toggle controls */}
-                            {connectionState === 'connected' && (
+                            {(connectionState === 'connected' || connectionState === 'reconnecting') && (
                               <div className="flex items-center gap-2">
                                 <Button
                                   variant="outline"

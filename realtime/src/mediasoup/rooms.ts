@@ -32,7 +32,7 @@ export function removePeerFromRoom(room: Room, peerId: string): Peer | undefined
   if (!peer) return undefined;
 
   // Close all transports (which closes producers and consumers too)
-  for (const transport of peer.transports.values()) {
+  for (const { transport } of peer.transports.values()) {
     transport.close();
   }
 
@@ -51,4 +51,24 @@ export function removePeerFromRoom(room: Room, peerId: string): Peer | undefined
 
 export function getRoom(roomId: string): Room | undefined {
   return rooms.get(roomId);
+}
+
+export function deleteRoom(roomId: string): void {
+  const room = rooms.get(roomId);
+  if (room) {
+    room.router.close();
+    rooms.delete(roomId);
+    console.log(`Room manually deleted [id:${roomId}]`);
+  }
+}
+
+export function getRoomCount(): number {
+  return rooms.size;
+}
+
+export function getAllRoomStats(): Array<{ roomId: string; peerCount: number }> {
+  return Array.from(rooms.entries()).map(([roomId, room]) => ({
+    roomId,
+    peerCount: room.peers.size,
+  }));
 }

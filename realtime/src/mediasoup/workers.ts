@@ -27,3 +27,7 @@ export function getNextWorker(): Worker {
   nextWorkerIdx = (nextWorkerIdx + 1) % workers.length;
   return worker;
 }
+
+export function getWorkerCount(): number {
+  return workers.length;
+}
