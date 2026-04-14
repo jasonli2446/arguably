@@ -5,6 +5,11 @@ import { prisma } from "@/lib/prisma"
 import { requireHostOrModerator } from "@/lib/actions/utils"
 
 export async function getDebateState(sessionId: string) {
+  // Auth check: require authenticated user
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+
   const state = await prisma.debateState.findUnique({
     where: { session_id: sessionId },
   })
@@ -30,6 +35,24 @@ export async function startDebate(
 ) {
   await requireHostOrModerator(sessionId)
   if (debaters.length !== 2) throw new Error("Exactly 2 debaters required")
+  if (turnLength < 1) throw new Error("Turn length must be at least 1 second")
+  if (turnLength > 1800) throw new Error("Turn length cannot exceed 30 minutes (1800 seconds)")
+
+  // Validate debater IDs are active participants in the session
+  const participants = await prisma.participatesIn.findMany({
+    where: {
+      session_id: sessionId,
+      left_at: null,
+      user_id: { in: debaters.map((d) => d.userId) },
+    },
+    select: { user_id: true },
+  })
+  const participantIds = new Set(participants.map((p: { user_id: string }) => p.user_id))
+  for (const debater of debaters) {
+    if (!participantIds.has(debater.userId)) {
+      throw new Error(`Debater ${debater.userId} is not an active participant in this session`)
+    }
+  }
 
   const now = Date.now()
   await prisma.debateState.upsert({
@@ -80,6 +103,12 @@ export async function advanceTurnIfExpired(sessionId: string) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return
+
+  // Verify user is an active participant in this session
+  const participation = await prisma.participatesIn.findUnique({
+    where: { user_id_session_id: { user_id: user.id, session_id: sessionId } },
+  })
+  if (!participation || participation.left_at !== null) return
 
   const state = await prisma.debateState.findUnique({
     where: { session_id: sessionId },
@@ -146,7 +175,7 @@ export async function resumeDebate(sessionId: string) {
 }
 
 export async function extendTurn(sessionId: string, extraSeconds: number) {
-  await requireModerator(sessionId)
+  await requireHostOrModerator(sessionId)
 
   const state = await prisma.debateState.findUnique({
     where: { session_id: sessionId },

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -161,7 +162,19 @@ export function useMediasoup({
 
         if (cancelled) return
 
-        const socket = io(sfuUrl!, { transports: ['websocket'] })
+        // Get Supabase auth token for Socket.IO authentication
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) {
+          console.error('No auth token available — cannot connect to SFU')
+          setConnectionState('error')
+          return
+        }
+
+        const socket = io(sfuUrl!, {
+          transports: ['websocket'],
+          auth: { token: session.access_token },
+        })
         socketRef.current = socket
 
         socket.on('connect', async () => {

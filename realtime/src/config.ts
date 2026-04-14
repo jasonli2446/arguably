@@ -19,8 +19,25 @@ const RTC_MAX_PORT = parseInt(process.env.RTC_MAX_PORT || "40100", 10);
 
 const TURN_HOST = process.env.TURN_HOST || ANNOUNCED_IP;
 const TURN_PORT = parseInt(process.env.TURN_PORT || "3478", 10);
-const TURN_USERNAME = process.env.TURN_USERNAME || "arguably";
-const TURN_PASSWORD = process.env.TURN_PASSWORD || "arguably-turn-password";
+
+const DEFAULT_TURN_USERNAME = "arguably";
+const DEFAULT_TURN_PASSWORD = "arguably-turn-password";
+const TURN_USERNAME = process.env.TURN_USERNAME || DEFAULT_TURN_USERNAME;
+const TURN_PASSWORD = process.env.TURN_PASSWORD || DEFAULT_TURN_PASSWORD;
+
+// Warn if default TURN credentials are used in production
+if (process.env.NODE_ENV === "production") {
+  if (TURN_USERNAME === DEFAULT_TURN_USERNAME || TURN_PASSWORD === DEFAULT_TURN_PASSWORD) {
+    console.warn(
+      "\n╔══════════════════════════════════════════════════════════╗\n" +
+        "║  WARNING: Default TURN credentials detected in prod!    ║\n" +
+        "║  Set TURN_USERNAME and TURN_PASSWORD env vars to        ║\n" +
+        "║  strong, unique values. Default creds are public in     ║\n" +
+        "║  source code and can be abused for bandwidth theft.     ║\n" +
+        "╚══════════════════════════════════════════════════════════╝\n",
+    );
+  }
+}
 
 // ── mediasoup worker settings ──
 

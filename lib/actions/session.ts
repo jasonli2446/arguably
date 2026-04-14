@@ -23,9 +23,11 @@ export async function createSession(formData: {
 
     if (!formData.name.trim()) throw new Error("Room name is required")
 
-    // Validate capacities
+    // Validate capacities and bounds
     if (formData.audienceCapacity < 0) throw new Error("Audience capacity cannot be negative")
+    if (formData.audienceCapacity > 1000) throw new Error("Audience capacity cannot exceed 1000")
     if (formData.turnLength < 1) throw new Error("Turn length must be at least 1 second")
+    if (formData.turnLength > 1800) throw new Error("Turn length cannot exceed 30 minutes (1800 seconds)")
 
     // Panel-specific validation
     if (formData.type === SessionType.PANEL) {
@@ -332,12 +334,14 @@ export async function assignModerator(sessionId: string, targetUserId: string) {
   if (session.host_id !== user.id) throw new Error("Only the host can assign a moderator")
   if (targetUserId === user.id) throw new Error("Host cannot assign themselves as moderator")
 
-  // Get current role of target user for history logging
+  // Verify target is an active participant and get role for history logging
   const targetParticipation = await prisma.participatesIn.findUnique({
     where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
-    select: { session_role: true },
+    select: { session_role: true, left_at: true },
   })
-  if (!targetParticipation) throw new Error("Target user is not a participant")
+  if (!targetParticipation || targetParticipation.left_at !== null) {
+    throw new Error("Target user is not an active participant in this session")
+  }
 
   const txOps = []
 
@@ -400,11 +404,14 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
   // Cannot kick yourself
   if (targetUserId === user.id) throw new Error("Cannot kick yourself")
 
-  // Get current role for history logging
+  // Verify target is an active participant and get role for history logging
   const participation = await prisma.participatesIn.findUnique({
     where: { user_id_session_id: { user_id: targetUserId, session_id: sessionId } },
-    select: { session_role: true },
+    select: { session_role: true, left_at: true },
   })
+  if (!participation || participation.left_at !== null) {
+    throw new Error("Target user is not an active participant in this session")
+  }
 
   await prisma.participatesIn.update({
     where: {
