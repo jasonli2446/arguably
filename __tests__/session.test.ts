@@ -24,6 +24,10 @@ vi.mock('@/lib/prisma', () => ({
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    roleHistory: {
+      create: vi.fn().mockResolvedValue({}),
+    },
+    $transaction: vi.fn().mockResolvedValue([]),
   },
 }))
 
