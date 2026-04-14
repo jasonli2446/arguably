@@ -9,12 +9,13 @@ test.describe('Settings Page', () => {
 
   test('shows all settings sections', async ({ page }) => {
     await page.goto('/settings')
-    await expect(page.getByText('PROFILE')).toBeVisible()
-    await expect(page.getByText('NOTIFICATIONS')).toBeVisible()
-    await expect(page.getByText('PRIVACY')).toBeVisible()
-    await expect(page.getByText('AUDIO')).toBeVisible()
-    await expect(page.getByText('APPEARANCE')).toBeVisible()
-    await expect(page.getByText('LANGUAGE & REGION')).toBeVisible()
+    // Use heading role to avoid matching description text that contains section names
+    await expect(page.getByRole('heading', { name: 'PROFILE' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'NOTIFICATIONS' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'PRIVACY' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'AUDIO' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'APPEARANCE' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'LANGUAGE & REGION' })).toBeVisible()
   })
 
   test('shows danger zone', async ({ page }) => {
