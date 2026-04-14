@@ -44,35 +44,15 @@ enum VoteType {
 // ── Models ──
 
 model User {
-  id         String        @id @db.Uuid
-  username   String        @unique
-  email      String?
-  realname   String?
-  role       UniversalRole @default(USER)
-  created_at DateTime      @default(now())
-
-  // Profile
-  bio String?
-
-  // Notification preferences
-  notify_invitations   Boolean @default(true)
-  notify_messages      Boolean @default(true)
-  notify_weekly_digest Boolean @default(false)
-
-  // Privacy preferences
-  profile_visibility    String  @default("public")
-  show_online_status    Boolean @default(true)
-  allow_direct_messages Boolean @default(true)
-
-  // Appearance preferences
-  theme              String  @default("dark")
-  font_size          String  @default("medium")
-  animations_enabled Boolean @default(true)
-
-  // Language & region preferences
-  language    String @default("en")
-  timezone    String @default("UTC")
-  date_format String @default("MM/DD/YYYY")
+  id          String        @id @db.Uuid
+  username    String        @unique
+  email       String?
+  realname    String?
+  bio         String?
+  preferences Json?
+  deleted_at  DateTime?
+  role        UniversalRole @default(USER)
+  created_at  DateTime      @default(now())
 
   // Relations
   hosted_sessions    Session[]        @relation("HostToSession")

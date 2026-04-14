@@ -1,0 +1,50 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - heading "STEP INTO THE ARENA" [level=1] [ref=e9]:
+        - text: STEP INTO
+        - text: THE ARENA
+      - paragraph [ref=e10]: Where ideas clash and the best arguments win. Join structured debates with real-time moderation.
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - img [ref=e14]
+          - generic [ref=e16]:
+            - generic [ref=e17]: LIVE DEBATES
+            - generic [ref=e18]: Real-time structured arguments
+        - generic [ref=e19]:
+          - img [ref=e21]
+          - generic [ref=e23]:
+            - generic [ref=e24]: MODERATED
+            - generic [ref=e25]: Fair rules, enforced turns
+        - generic [ref=e26]:
+          - img [ref=e28]
+          - generic [ref=e33]:
+            - generic [ref=e34]: COMMUNITY
+            - generic [ref=e35]: Thousands of active debaters
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - heading "SIGN IN" [level=2] [ref=e39]
+        - paragraph [ref=e40]: Welcome back, debater
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - generic [ref=e43]:
+            - img [ref=e44]
+            - text: Email
+          - textbox "you@example.com" [ref=e47]: invalid@test.com
+        - generic [ref=e48]:
+          - generic [ref=e49]:
+            - img [ref=e50]
+            - text: Password
+          - textbox "Min 6 characters" [ref=e53]: wrongpassword
+        - button "LOADING..." [disabled] [ref=e54] [cursor=pointer]:
+          - generic [ref=e55]: LOADING...
+      - paragraph [ref=e57]:
+        - text: Don't have an account?
+        - button "SIGN UP" [ref=e58]
+  - button "Open Next.js Dev Tools" [ref=e64] [cursor=pointer]:
+    - img [ref=e65]
+  - alert [ref=e68]
+```
