@@ -33,6 +33,20 @@ enum SessionStatus {
   ENDED
 }
 
+enum DebatePhase {
+  ACTIVE
+  GRACE
+  PAUSED
+  ENDED
+}
+
+enum TurnReason {
+  TIMER_EXPIRED
+  MANUAL_ADVANCE
+  SPEAKER_DISCONNECT
+  DEBATE_START
+}
+
 model User {
   id         String        @id @db.Uuid
   username   String        @unique
@@ -83,14 +97,33 @@ model Session {
 }
 
 model DebateState {
-  id                    String  @id @default(cuid())
-  session_id            String  @unique
+  id                    String       @id @default(cuid())
+  session_id            String       @unique
   debater_order         Json
-  current_index         Int     @default(0)
+  current_index         Int          @default(0)
   turn_length           Int
   turn_ends_at          Float?
-  is_paused             Boolean @default(false)
-  paused_time_remaining Float   @default(0)
+  is_paused             Boolean      @default(false)
+  paused_time_remaining Float        @default(0)
+  format                SessionType
+  format_meta           Json?
+  phase                 DebatePhase  @default(ACTIVE)
+  version               Int          @default(0)
 
-  session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  session   Session   @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  turn_logs TurnLog[]
+}
+
+model TurnLog {
+  id              String     @id @default(cuid())
+  debate_state_id String
+  speaker_user_id String?    @db.Uuid
+  speaker_name    String
+  turn_index      Int
+  reason          TurnReason
+  started_at      DateTime
+  ended_at        DateTime   @default(now())
+  duration_sec    Float
+
+  debate_state DebateState @relation(fields: [debate_state_id], references: [id], onDelete: Cascade)
 }

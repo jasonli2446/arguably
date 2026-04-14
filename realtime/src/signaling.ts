@@ -8,6 +8,13 @@ import type {
   ConsumeRequest,
   ResumeConsumerRequest,
   CloseProducerRequest,
+  JoinDebateRoomRequest,
+  StartDebateRequest,
+  NextTurnRequest,
+  PauseDebateRequest,
+  ResumeDebateRequest,
+  EndDebateRequest,
+  GetDebateStateRequest,
 } from "./types.js";
 import { iceServers } from "./config.js";
 import { getOrCreateRoom, addPeerToRoom, removePeerFromRoom, getRoom } from "./mediasoup/rooms.js";
@@ -15,13 +22,39 @@ import { createWebRtcTransport, getTransportOptions } from "./mediasoup/transpor
 import { createProducer } from "./mediasoup/producers.js";
 import { createConsumer } from "./mediasoup/consumers.js";
 import type { RtpCapabilities } from "mediasoup/types";
-// Track which room each socket is in
+import {
+  startDebate,
+  advanceTurn,
+  pauseDebate,
+  resumeDebate,
+  endDebate,
+  getOrLoadState,
+  checkAuthorization,
+  handleSpeakerDisconnect,
+} from "./debate.js";
+
+// Track which room each socket is in (mediasoup)
 const socketRoomMap = new Map<string, string>();
 const socketPeerMap = new Map<string, { rtpCapabilities: RtpCapabilities }>();
+
+// Track socket -> userId for debate auth
+const socketUserMap = new Map<string, string>();
+// Track socket -> debate room code (for sockets that joined via joinDebateRoom)
+const socketDebateRoomMap = new Map<string, string>();
 
 export function setupSignaling(io: SocketIOServer): void {
   io.on("connection", (socket: Socket) => {
     console.log(`Socket connected [id:${socket.id}]`);
+
+    // Extract userId from auth handshake (if provided)
+    const authUserId = (socket.handshake.auth as Record<string, unknown>)?.userId as string | undefined;
+    if (authUserId) {
+      socketUserMap.set(socket.id, authUserId);
+    }
+
+    // ══════════════════════════════════════════
+    // ── MEDIASOUP SIGNALING (unchanged) ──
+    // ══════════════════════════════════════════
 
     // ── getRouterRtpCapabilities ──
     socket.on("getRouterRtpCapabilities", async (data: { roomId: string }, callback) => {
@@ -38,14 +71,15 @@ export function setupSignaling(io: SocketIOServer): void {
       }
     });
 
-    // ── joinRoom ──
-    socket.on("joinRoom", async (data: JoinRequest, callback) => {
+    // ── joinRoom (mediasoup) ──
+    socket.on("joinRoom", async (data: JoinRequest & { userId?: string }, callback) => {
       try {
         const room = await getOrCreateRoom(data.roomId);
 
         const peer: Peer = {
           id: socket.id,
           displayName: data.displayName,
+          userId: data.userId || authUserId,
           transports: new Map(),
           producers: new Map(),
           consumers: new Map(),
@@ -54,6 +88,11 @@ export function setupSignaling(io: SocketIOServer): void {
         addPeerToRoom(room, peer);
         socketRoomMap.set(socket.id, data.roomId);
         socketPeerMap.set(socket.id, { rtpCapabilities: data.rtpCapabilities });
+
+        // Also track userId if provided
+        if (data.userId) {
+          socketUserMap.set(socket.id, data.userId);
+        }
 
         // Join socket.io room for broadcasting
         socket.join(data.roomId);
@@ -77,7 +116,7 @@ export function setupSignaling(io: SocketIOServer): void {
     });
 
     // ── createWebRtcTransport ──
-    socket.on("createWebRtcTransport", async (data: CreateTransportRequest, callback) => {
+    socket.on("createWebRtcTransport", async (_data: CreateTransportRequest, callback) => {
       try {
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) throw new Error("Not in a room");
@@ -327,9 +366,137 @@ export function setupSignaling(io: SocketIOServer): void {
       }
     });
 
-    // ── disconnect ──
+    // ══════════════════════════════════════════
+    // ── DEBATE EVENTS ──
+    // ══════════════════════════════════════════
+
+    // ── joinDebateRoom ──
+    // Lightweight join for debate events only (no mediasoup).
+    // All participants (including audience) call this.
+    socket.on("joinDebateRoom", (data: JoinDebateRoomRequest, callback) => {
+      try {
+        socket.join(data.roomCode);
+        socketDebateRoomMap.set(socket.id, data.roomCode);
+        console.log(`Socket joined debate room [id:${socket.id}, room:${data.roomCode}]`);
+        callback({ success: true });
+      } catch (error) {
+        console.error("joinDebateRoom error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── startDebate ──
+    socket.on("startDebate", async (data: StartDebateRequest, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized: must be host or moderator");
+
+        const result = await startDebate(
+          data.roomCode,
+          data.debaters,
+          data.turnLength,
+          data.format,
+          data.formatMeta ?? null,
+          io,
+        );
+
+        callback(result);
+      } catch (error) {
+        console.error("startDebate error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── nextTurn ──
+    socket.on("nextTurn", async (data: NextTurnRequest, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized");
+
+        const result = await advanceTurn(data.roomCode, "MANUAL_ADVANCE", io, data.version);
+        callback(result);
+      } catch (error) {
+        console.error("nextTurn error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── pauseDebate ──
+    socket.on("pauseDebate", async (data: PauseDebateRequest, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized");
+
+        const result = await pauseDebate(data.roomCode, io);
+        callback(result);
+      } catch (error) {
+        console.error("pauseDebate error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── resumeDebate ──
+    socket.on("resumeDebate", async (data: ResumeDebateRequest, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized");
+
+        const result = await resumeDebate(data.roomCode, io);
+        callback(result);
+      } catch (error) {
+        console.error("resumeDebate error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── endDebate ──
+    socket.on("endDebate", async (data: EndDebateRequest, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized");
+
+        const result = await endDebate(data.roomCode, io);
+        callback(result);
+      } catch (error) {
+        console.error("endDebate error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ── getDebateState ──
+    socket.on("getDebateState", async (data: GetDebateStateRequest, callback) => {
+      try {
+        const state = await getOrLoadState(data.roomCode, io);
+        callback({ success: true, state });
+      } catch (error) {
+        console.error("getDebateState error:", error);
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    // ══════════════════════════════════════════
+    // ── DISCONNECT ──
+    // ══════════════════════════════════════════
+
     socket.on("disconnect", () => {
       console.log(`Socket disconnected [id:${socket.id}]`);
+
+      const userId = socketUserMap.get(socket.id);
 
       // Clean up mediasoup peer
       const roomId = socketRoomMap.get(socket.id);
@@ -346,8 +513,25 @@ export function setupSignaling(io: SocketIOServer): void {
         }
         socketRoomMap.delete(socket.id);
         socketPeerMap.delete(socket.id);
+
+        // Handle debate speaker disconnect
+        if (userId) {
+          handleSpeakerDisconnect(roomId, userId, io).catch((err) => {
+            console.error("handleSpeakerDisconnect error:", err);
+          });
+        }
       }
 
+      // Handle debate room disconnect (for audience-only sockets)
+      const debateRoom = socketDebateRoomMap.get(socket.id);
+      if (debateRoom && debateRoom !== roomId && userId) {
+        handleSpeakerDisconnect(debateRoom, userId, io).catch((err) => {
+          console.error("handleSpeakerDisconnect error:", err);
+        });
+      }
+
+      socketUserMap.delete(socket.id);
+      socketDebateRoomMap.delete(socket.id);
     });
   });
 }

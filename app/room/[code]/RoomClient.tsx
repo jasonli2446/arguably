@@ -63,8 +63,6 @@ export default function RoomClient({
   currentUsername: string
 }) {
   const router = useRouter()
-  const [isPaused, setIsPaused] = useState(session.status === SessionStatus.PAUSED)
-  const [timeRemaining, setTimeRemaining] = useState(session.turnLength)
   const [isJoining, setIsJoining] = useState(false)
   const [showDebaterOptions, setShowDebaterOptions] = useState(false)
 
@@ -79,6 +77,7 @@ export default function RoomClient({
     remoteStreams,
     audioMuted,
     videoOff,
+    serverMuted,
     toggleMute,
     toggleVideo,
     disconnect: disconnectSfu,
@@ -86,11 +85,13 @@ export default function RoomClient({
     sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
     roomId: session.code,
     displayName: currentUsername,
+    userId: currentUserId,
     enabled: isDebater,
   })
 
   const debate = useDebateChannel({
-    sessionId: session.id,
+    sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
+    roomCode: session.code,
     userId: currentUserId,
   })
 
@@ -148,9 +149,6 @@ export default function RoomClient({
   }, [isParticipant, session.id])
 
   // Filter participants by role
-  const moderators = session.participatesIns.filter(
-    (p) => p.sessionRole === SessionRole.MODERATOR || p.sessionRole === SessionRole.HOST
-  )
   const debaters = session.participatesIns.filter(
     (p) => p.sessionRole === SessionRole.DEBATER || p.sessionRole === SessionRole.HOST
   )
@@ -192,16 +190,6 @@ export default function RoomClient({
       ? debate.timeRemaining
       : session.turnLength
 
-  // Timer countdown
-  useEffect(() => {
-    if (!isPaused && session.status === SessionStatus.LIVE) {
-      const interval = setInterval(() => {
-        setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0))
-      }, 1000)
-      return () => clearInterval(interval)
-    }
-  }, [isPaused, session.status])
-
   async function handleLeave() {
     disconnectSfu()
     try {
@@ -215,7 +203,7 @@ export default function RoomClient({
 
   async function handleTogglePause() {
     try {
-      if (isPaused) {
+      if (debate.isPaused) {
         await debate.resume()
         await updateSessionStatus(session.id, 'LIVE')
       } else {
@@ -239,8 +227,6 @@ export default function RoomClient({
 
   async function handleStartSession() {
     try {
-      await updateSessionStatus(session.id, 'LIVE')
-
       // Build debater list from participants with HOST or DEBATER role
       const debaterList = debaters.map((p) => ({
         userId: p.user.id,
@@ -248,7 +234,7 @@ export default function RoomClient({
       }))
 
       if (debaterList.length >= 2) {
-        await debate.startDebate(debaterList, session.turnLength)
+        await debate.startDebate(debaterList, session.turnLength, session.type)
       }
 
       await updateSessionStatus(session.id, SessionStatus.LIVE)
@@ -427,11 +413,28 @@ export default function RoomClient({
                       </div>
                     ) : (
                       <div className="flex flex-col space-y-4">
-                        {/* Debater display */}
-                        {isDebateLive && debate.debaters.length === 2 ? (
-                          <div className="flex items-center justify-center gap-6">
+                        {/* Grace period overlay */}
+                        {debate.graceCountdown !== null && debate.graceCountdown > 0 && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-orange-500/20 border-2 border-orange-400 p-4 text-center mb-4"
+                          >
+                            <p className="text-orange-300 debate-mono text-sm">TURN TRANSITION</p>
+                            <p className="text-white font-bold debate-title text-2xl">
+                              {debate.graceCountdown}
+                            </p>
+                          </motion.div>
+                        )}
+
+                        {/* Debater display — works for all formats */}
+                        {isDebateLive && debate.debaters.length > 0 ? (
+                          <div className="flex items-center justify-center gap-6 flex-wrap">
                             {debate.debaters.map((d, i) => {
                               const isSpeaking = debate.currentSpeaker?.userId === d.userId
+                              const colorClass = i % 2 === 0
+                                ? 'bg-gradient-to-br from-red-600 to-red-800'
+                                : 'bg-gradient-to-br from-blue-600 to-blue-800'
                               return (
                                 <div
                                   key={d.userId}
@@ -442,11 +445,7 @@ export default function RoomClient({
                                   }`}
                                 >
                                   <div
-                                    className={`w-14 h-14 border-2 border-black flex items-center justify-center text-white font-bold text-lg ${
-                                      i === 0
-                                        ? 'bg-gradient-to-br from-red-600 to-red-800'
-                                        : 'bg-gradient-to-br from-blue-600 to-blue-800'
-                                    }`}
+                                    className={`w-14 h-14 border-2 border-black flex items-center justify-center text-white font-bold text-lg ${colorClass}`}
                                   >
                                     {getInitials(d.displayName)}
                                   </div>
@@ -470,7 +469,7 @@ export default function RoomClient({
                               <div key={p.userId} className="flex items-center space-x-3 p-3 border-2 border-white/20">
                                 <div
                                   className={`w-14 h-14 border-2 border-black flex items-center justify-center text-white font-bold text-lg ${
-                                    i === 0
+                                    i % 2 === 0
                                       ? 'bg-gradient-to-br from-red-600 to-red-800'
                                       : 'bg-gradient-to-br from-blue-600 to-blue-800'
                                   }`}
@@ -537,11 +536,12 @@ export default function RoomClient({
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="debate-button"
+                                  className={`debate-button ${serverMuted ? 'opacity-50' : ''}`}
                                   onClick={toggleMute}
+                                  disabled={serverMuted}
                                 >
                                   {audioMuted ? <MicOff className="w-4 h-4 mr-1" /> : <Mic className="w-4 h-4 mr-1" />}
-                                  {audioMuted ? 'UNMUTE' : 'MUTE'}
+                                  {serverMuted ? 'MUTED BY MOD' : audioMuted ? 'UNMUTE' : 'MUTE'}
                                 </Button>
                                 <Button
                                   variant="outline"
@@ -703,8 +703,8 @@ export default function RoomClient({
                         onClick={handleTogglePause}
                         className="debate-button col-span-2"
                       >
-                        {isPaused ? <Play className="w-4 h-4 mr-2" /> : <Pause className="w-4 h-4 mr-2" />}
-                        {isPaused ? 'RESUME' : 'PAUSE'}
+                        {debate.isPaused ? <Play className="w-4 h-4 mr-2" /> : <Pause className="w-4 h-4 mr-2" />}
+                        {debate.isPaused ? 'RESUME' : 'PAUSE'}
                       </Button>
                       <Button
                         variant="outline"

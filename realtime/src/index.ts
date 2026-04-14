@@ -6,6 +6,7 @@ import { Server as SocketIOServer } from "socket.io";
 import { createWorkers } from "./mediasoup/workers.js";
 import { setupSignaling } from "./signaling.js";
 import { LISTEN_PORT } from "./config.js";
+import { recoverDebates } from "./debate.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,6 +63,9 @@ const io = new SocketIOServer(server, {
 async function main(): Promise<void> {
   await createWorkers();
   setupSignaling(io);
+
+  // Recover any active debates from DB (after server restart)
+  await recoverDebates(io);
 
   server.listen(LISTEN_PORT, "0.0.0.0", () => {
     console.log(`\nArguably Realtime SFU running`);

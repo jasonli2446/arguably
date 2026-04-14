@@ -12,12 +12,15 @@
     "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
+    "@prisma/client": "^7.7.0",
     "dotenv": "^16.4.7",
     "mediasoup": "^3.19.0",
+    "pg": "^8.20.0",
     "socket.io": "^4.8.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
+    "@types/pg": "^8.20.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }
