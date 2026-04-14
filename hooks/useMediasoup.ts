@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
+type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting'
 
 interface RemoteStream {
   stream: MediaStream
@@ -21,6 +21,7 @@ interface UseMediasoupReturn {
   connectionState: ConnectionState
   localStream: MediaStream | null
   remoteStreams: Map<string, RemoteStream>
+  reconnectingPeers: Set<string>
   audioMuted: boolean
   videoOff: boolean
   toggleMute: () => void
@@ -50,6 +51,7 @@ export function useMediasoup({
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStreams, setRemoteStreams] = useState<Map<string, RemoteStream>>(new Map())
+  const [reconnectingPeers, setReconnectingPeers] = useState<Set<string>>(new Set())
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoOff, setVideoOff] = useState(false)
 
@@ -61,6 +63,8 @@ export function useMediasoup({
   const consumersRef = useRef<Map<string, { consumer: any; peerId: string }>>(new Map())
   const localStreamRef = useRef<MediaStream | null>(null)
   const cleanedUpRef = useRef(false)
+  const peerIdRef = useRef<string | null>(null)
+  const routerDataRef = useRef<any>(null)
 
   const cleanup = useCallback(() => {
     if (cleanedUpRef.current) return
@@ -104,8 +108,11 @@ export function useMediasoup({
       socketRef.current = null
     }
 
+    peerIdRef.current = null
     deviceRef.current = null
+    routerDataRef.current = null
     setRemoteStreams(new Map())
+    setReconnectingPeers(new Set())
     setConnectionState('disconnected')
   }, [])
 
@@ -141,6 +148,134 @@ export function useMediasoup({
     cleanedUpRef.current = false
     let cancelled = false
 
+    // Helper: create transports, produce local tracks, consume remote producers
+    async function setupMediaState(
+      socket: any,
+      device: any,
+      iceServers: any,
+      producersList?: Array<{ producerId: string }>,
+    ) {
+      // Create send transport
+      const sendData = await request(socket, 'createWebRtcTransport', { direction: 'send' })
+      const sendTransport = device.createSendTransport({
+        ...sendData.transportOptions,
+        iceServers,
+      })
+      sendTransportRef.current = sendTransport
+
+      sendTransport.on('connect', ({ dtlsParameters }: any, callback: () => void, errback: (err: Error) => void) => {
+        request(socket, 'connectTransport', {
+          transportId: sendTransport.id,
+          dtlsParameters,
+        })
+          .then(callback)
+          .catch(errback)
+      })
+
+      sendTransport.on('produce', async ({ kind, rtpParameters, appData }: any, callback: (arg: { id: string }) => void, errback: (err: Error) => void) => {
+        try {
+          const resp = await request(socket, 'produce', {
+            transportId: sendTransport.id,
+            kind,
+            rtpParameters,
+            appData,
+          })
+          callback({ id: resp.producerId })
+        } catch (err: any) {
+          errback(err)
+        }
+      })
+
+      // Create recv transport
+      const recvData = await request(socket, 'createWebRtcTransport', { direction: 'recv' })
+      const recvTransport = device.createRecvTransport({
+        ...recvData.transportOptions,
+        iceServers,
+      })
+      recvTransportRef.current = recvTransport
+
+      recvTransport.on('connect', ({ dtlsParameters }: any, callback: () => void, errback: (err: Error) => void) => {
+        request(socket, 'connectTransport', {
+          transportId: recvTransport.id,
+          dtlsParameters,
+        })
+          .then(callback)
+          .catch(errback)
+      })
+
+      // Get or reuse local media
+      if (!localStreamRef.current) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480 },
+          audio: true,
+        })
+        localStreamRef.current = stream
+        setLocalStream(stream)
+      }
+
+      // Produce local tracks
+      const videoTrack = localStreamRef.current!.getVideoTracks()[0]
+      if (videoTrack && videoTrack.readyState === 'live') {
+        const videoProducer = await sendTransport.produce({ track: videoTrack })
+        producersRef.current.set(videoProducer.id, videoProducer)
+      }
+
+      const audioTrack = localStreamRef.current!.getAudioTracks()[0]
+      if (audioTrack && audioTrack.readyState === 'live') {
+        const audioProducer = await sendTransport.produce({ track: audioTrack })
+        producersRef.current.set(audioProducer.id, audioProducer)
+      }
+
+      // Consume remote producers
+      const producers = producersList ?? (await request(socket, 'getProducers')).producers
+      for (const p of producers) {
+        await consumeProducer(socket, recvTransport, p.producerId)
+      }
+    }
+
+    // Fresh join: first time connecting to a room
+    async function doFreshJoin(socket: any, device: any) {
+      // 1. Get router RTP capabilities
+      const routerData = await request(socket, 'getRouterRtpCapabilities', { roomId })
+      routerDataRef.current = routerData
+
+      // 2. Load mediasoup Device
+      if (!device.loaded) {
+        await device.load({ routerRtpCapabilities: routerData.rtpCapabilities })
+      }
+
+      // 3. Join room
+      const joinResult = await request(socket, 'joinRoom', {
+        roomId,
+        displayName,
+        rtpCapabilities: device.rtpCapabilities,
+      })
+      peerIdRef.current = joinResult.stablePeerId
+
+      // 4. Setup media (transports, produce, consume)
+      await setupMediaState(socket, device, routerData.iceServers)
+    }
+
+    // Reconnect: rejoin with existing stable peer ID
+    async function doReconnect(socket: any, device: any) {
+      const routerData = routerDataRef.current ?? await request(socket, 'getRouterRtpCapabilities', { roomId })
+      routerDataRef.current = routerData
+
+      if (!device.loaded) {
+        await device.load({ routerRtpCapabilities: routerData.rtpCapabilities })
+      }
+
+      const result = await request(socket, 'reconnect', {
+        roomId,
+        stablePeerId: peerIdRef.current,
+        displayName,
+        rtpCapabilities: device.rtpCapabilities,
+      })
+
+      // Rebuild media state with the producers list from reconnect response
+      await setupMediaState(socket, device, routerData.iceServers, result.producers)
+    }
+
     async function connect() {
       setConnectionState('connecting')
 
@@ -153,102 +288,57 @@ export function useMediasoup({
 
         if (cancelled) return
 
-        const socket = io(sfuUrl!, { transports: ['websocket'] })
+        const socket = io(sfuUrl!, {
+          transports: ['websocket'],
+          reconnection: true,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+        })
         socketRef.current = socket
+
+        const device = new Device()
+        deviceRef.current = device
 
         socket.on('connect', async () => {
           if (cancelled) return
 
           try {
-            // 1. Get router RTP capabilities
-            const routerData = await request(socket, 'getRouterRtpCapabilities', { roomId })
-
-            // 2. Load mediasoup Device
-            const device = new Device()
-            await device.load({ routerRtpCapabilities: routerData.rtpCapabilities })
-            deviceRef.current = device
-
-            // 3. Join room
-            await request(socket, 'joinRoom', {
-              roomId,
-              displayName,
-              rtpCapabilities: device.rtpCapabilities,
-            })
-
-            // 4. Create send transport
-            const sendData = await request(socket, 'createWebRtcTransport', { direction: 'send' })
-            const sendTransport = device.createSendTransport({
-              ...sendData.transportOptions,
-              iceServers: routerData.iceServers,
-            })
-            sendTransportRef.current = sendTransport
-
-            sendTransport.on('connect', ({ dtlsParameters }: any, callback: () => void, errback: (err: Error) => void) => {
-              request(socket, 'connectTransport', {
-                transportId: sendTransport.id,
-                dtlsParameters,
-              })
-                .then(callback)
-                .catch(errback)
-            })
-
-            sendTransport.on('produce', async ({ kind, rtpParameters, appData }: any, callback: (arg: { id: string }) => void, errback: (err: Error) => void) => {
-              try {
-                const resp = await request(socket, 'produce', {
-                  transportId: sendTransport.id,
-                  kind,
-                  rtpParameters,
-                  appData,
-                })
-                callback({ id: resp.producerId })
-              } catch (err: any) {
-                errback(err)
+            if (peerIdRef.current) {
+              // ── Reconnection flow ──
+              // Clear stale mediasoup client state before rebuilding
+              for (const [, producer] of producersRef.current) {
+                producer.close()
               }
-            })
+              producersRef.current.clear()
+              for (const [, info] of consumersRef.current) {
+                info.consumer.close()
+              }
+              consumersRef.current.clear()
+              if (sendTransportRef.current) {
+                sendTransportRef.current.close()
+                sendTransportRef.current = null
+              }
+              if (recvTransportRef.current) {
+                recvTransportRef.current.close()
+                recvTransportRef.current = null
+              }
 
-            // 5. Create recv transport
-            const recvData = await request(socket, 'createWebRtcTransport', { direction: 'recv' })
-            const recvTransport = device.createRecvTransport({
-              ...recvData.transportOptions,
-              iceServers: routerData.iceServers,
-            })
-            recvTransportRef.current = recvTransport
+              // Reset cleanedUpRef so cleanup works if needed later
+              cleanedUpRef.current = false
 
-            recvTransport.on('connect', ({ dtlsParameters }: any, callback: () => void, errback: (err: Error) => void) => {
-              request(socket, 'connectTransport', {
-                transportId: recvTransport.id,
-                dtlsParameters,
-              })
-                .then(callback)
-                .catch(errback)
-            })
-
-            // 6. Get user media and produce
-            const stream = await navigator.mediaDevices.getUserMedia({
-              video: { width: 640, height: 480 },
-              audio: true,
-            })
-            localStreamRef.current = stream
-            setLocalStream(stream)
-
-            const videoTrack = stream.getVideoTracks()[0]
-            if (videoTrack) {
-              const videoProducer = await sendTransport.produce({ track: videoTrack })
-              producersRef.current.set(videoProducer.id, videoProducer)
+              try {
+                await doReconnect(socket, device)
+                setConnectionState('connected')
+                console.log('SFU reconnected successfully')
+                return
+              } catch (err) {
+                console.warn('Reconnection failed, falling back to fresh join:', err)
+                peerIdRef.current = null
+              }
             }
 
-            const audioTrack = stream.getAudioTracks()[0]
-            if (audioTrack) {
-              const audioProducer = await sendTransport.produce({ track: audioTrack })
-              producersRef.current.set(audioProducer.id, audioProducer)
-            }
-
-            // 7. Consume existing producers
-            const prodData = await request(socket, 'getProducers')
-            for (const p of prodData.producers) {
-              await consumeProducer(socket, recvTransport, p.producerId)
-            }
-
+            // ── Fresh join flow ──
+            await doFreshJoin(socket, device)
             setConnectionState('connected')
           } catch (err: any) {
             console.error('SFU setup error:', err)
@@ -257,19 +347,24 @@ export function useMediasoup({
         })
 
         socket.on('disconnect', () => {
-          if (!cancelled) {
-            setConnectionState('disconnected')
-          }
+          if (cancelled || cleanedUpRef.current) return
+          // Don't cleanup — Socket.IO will auto-reconnect.
+          // Set state to reconnecting so UI shows the right indicator.
+          setConnectionState('reconnecting')
         })
 
         socket.on('connect_error', (err: Error) => {
           console.error('SFU connection error:', err)
-          if (!cancelled) {
+          if (cancelled) return
+          // Only show error if we haven't connected before (no peerId)
+          if (!peerIdRef.current) {
             setConnectionState('error')
           }
+          // Otherwise, stay in 'reconnecting' state — Socket.IO keeps trying
         })
 
-        // Server events
+        // ── Server events ──
+
         socket.on('newProducer', async (data: any) => {
           if (recvTransportRef.current) {
             await consumeProducer(socket, recvTransportRef.current, data.producerId)
@@ -307,6 +402,38 @@ export function useMediasoup({
               return next
             })
           }
+          // Clear from reconnecting set if present
+          setReconnectingPeers((prev) => {
+            const next = new Set(prev)
+            next.delete(data.peerId)
+            return next
+          })
+        })
+
+        // ── Reconnection events for remote peers ──
+
+        socket.on('peerReconnecting', (data: any) => {
+          console.log(`Peer ${data.displayName} is reconnecting...`)
+          setReconnectingPeers((prev) => {
+            const next = new Set(prev)
+            next.add(data.peerId)
+            return next
+          })
+        })
+
+        socket.on('peerReconnected', (data: any) => {
+          console.log(`Peer ${data.displayName} reconnected`)
+          setReconnectingPeers((prev) => {
+            const next = new Set(prev)
+            next.delete(data.peerId)
+            return next
+          })
+        })
+
+        // ── Transport failure notification ──
+
+        socket.on('transportFailure', (data: any) => {
+          console.warn(`Transport failure [${data.direction}]: ${data.reason}`)
         })
       } catch (err: any) {
         console.error('SFU connect error:', err)
@@ -361,6 +488,7 @@ export function useMediasoup({
     connectionState,
     localStream,
     remoteStreams,
+    reconnectingPeers,
     audioMuted,
     videoOff,
     toggleMute,

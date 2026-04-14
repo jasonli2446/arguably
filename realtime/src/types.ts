@@ -11,12 +11,26 @@ import type {
   IceParameters,
 } from "mediasoup/types";
 
+// ── Transport direction wrapper ──
+
+export interface TransportInfo {
+  transport: Transport;
+  direction: "send" | "recv";
+}
+
+// ── Peer state machine ──
+// connected → grace (on disconnect) → connected (on reconnect) or closed (on timer expiry)
+
+export type PeerState = "connected" | "grace" | "closed";
+
 // ── Peer & Room ──
 
 export interface Peer {
   id: string;
+  stablePeerId: string;
   displayName: string;
-  transports: Map<string, Transport>;
+  state: PeerState;
+  transports: Map<string, TransportInfo>;
   producers: Map<string, Producer>;
   consumers: Map<string, Consumer>;
 }
@@ -63,6 +77,13 @@ export interface CloseProducerRequest {
   producerId: string;
 }
 
+export interface ReconnectRequest {
+  roomId: string;
+  stablePeerId: string;
+  displayName: string;
+  rtpCapabilities: RtpCapabilities;
+}
+
 // ── Server → Client payloads ──
 
 export interface TransportOptions {
@@ -88,10 +109,25 @@ export interface NewProducerNotification {
   kind: MediaKind;
 }
 
+export interface TransportFailureNotification {
+  transportId: string;
+  direction: "send" | "recv" | "unknown";
+  reason: string;
+}
+
+export interface PeerReconnectingNotification {
+  peerId: string;
+  displayName: string;
+}
+
+export interface PeerReconnectedNotification {
+  peerId: string;
+  displayName: string;
+}
+
 // ── Generic acknowledgement wrapper ──
 
 export interface AckResponse {
   success: boolean;
   [key: string]: unknown;
 }
-
