@@ -1,0 +1,51 @@
+import { jwtVerify } from "jose";
+import type { Socket } from "socket.io";
+
+const isProduction = process.env.NODE_ENV === "production";
+
+export function createAuthMiddleware() {
+  const secret = process.env.SUPABASE_JWT_SECRET;
+
+  if (!secret && isProduction) {
+    console.error(
+      "\n[FATAL] SUPABASE_JWT_SECRET is required in production.\n" +
+        "Get it from your Supabase dashboard: Settings > API > JWT Secret.\n",
+    );
+    process.exit(1);
+  }
+
+  if (!secret) {
+    console.warn(
+      "[WARN] SUPABASE_JWT_SECRET not set — Socket.IO auth disabled. " +
+        "Set it for authenticated connections.",
+    );
+    return (_socket: Socket, next: (err?: Error) => void) => {
+      next();
+    };
+  }
+
+  const encodedSecret = new TextEncoder().encode(secret);
+
+  return async (socket: Socket, next: (err?: Error) => void) => {
+    const token = socket.handshake.auth?.token as string | undefined;
+
+    if (!token) {
+      return next(new Error("Authentication required"));
+    }
+
+    try {
+      const { payload } = await jwtVerify(token, encodedSecret, {
+        algorithms: ["HS256"],
+      });
+
+      if (!payload.sub) {
+        return next(new Error("Invalid token: missing sub claim"));
+      }
+
+      socket.data.userId = payload.sub;
+      next();
+    } catch {
+      next(new Error("Invalid or expired token"));
+    }
+  };
+}

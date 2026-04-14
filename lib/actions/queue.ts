@@ -1,8 +1,8 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
-import { SessionRole, VoteType } from "@/lib/generated/prisma"
+import { requireAuth, requireHostOrModerator } from "@/lib/actions/utils"
+import { SessionRole, SessionStatus, VoteType } from "@/lib/generated/prisma"
 import type { PrismaClient } from "@/lib/generated/prisma"
 
 type TransactionClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]
@@ -11,14 +11,14 @@ type TransactionClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>
 // Internal helpers (NOT server actions — called within transactions)
 // ---------------------------------------------------------------------------
 
-/** Pop the front of the queue (oldest added_at), promote to DEBATER, update DebateState. */
+/** Pop the front of the queue (oldest joined_queue), promote to DEBATER, update DebateState. */
 async function doPromoteFromQueue(
   tx: TransactionClient,
   sessionId: string
 ): Promise<{ userId: string; displayName: string } | null> {
   const front = await tx.audienceQueue.findFirst({
     where: { session_id: sessionId },
-    orderBy: [{ added_at: "asc" }, { id: "asc" }],
+    orderBy: [{ joined_queue: "asc" }, { id: "asc" }],
     include: { user: { select: { id: true, username: true, realname: true } } },
   })
   if (!front) return null
@@ -53,6 +53,17 @@ async function doPromoteFromQueue(
     })
   }
 
+  // Log role transition
+  await tx.roleHistory.create({
+    data: {
+      session_id: sessionId,
+      user_id: front.user_id,
+      old_role: SessionRole.AUDIENCE,
+      new_role: SessionRole.DEBATER,
+      reason: "Promoted from queue",
+    },
+  })
+
   return promoted
 }
 
@@ -75,11 +86,16 @@ async function cleanupUserVotes(
 // ---------------------------------------------------------------------------
 
 export async function joinQueue(sessionId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
+  const user = await requireAuth()
 
-  // Verify user is AUDIENCE in this session
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { status: true },
+  })
+  if (!session) throw new Error("Session not found")
+  if (session.status !== SessionStatus.LIVE) throw new Error("Session is not live")
+
+  // Verify user is an audience member
   const participation = await prisma.participatesIn.findUnique({
     where: {
       user_id_session_id: { user_id: user.id, session_id: sessionId },
@@ -88,22 +104,11 @@ export async function joinQueue(sessionId: string) {
   if (!participation || participation.left_at) {
     throw new Error("Not a participant in this session")
   }
-  if (
-    participation.session_role !== SessionRole.AUDIENCE
-  ) {
+  if (participation.session_role !== SessionRole.AUDIENCE) {
     throw new Error("Only audience members can join the queue")
   }
 
-  // Check session not ended
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: { status: true },
-  })
-  if (!session || session.status === "ENDED") {
-    throw new Error("Session has ended")
-  }
-
-  await prisma.audienceQueue.create({
+  return await prisma.audienceQueue.create({
     data: {
       session_id: sessionId,
       user_id: user.id,
@@ -112,9 +117,7 @@ export async function joinQueue(sessionId: string) {
 }
 
 export async function leaveQueue(sessionId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
+  const user = await requireAuth()
 
   await prisma.$transaction(async (tx) => {
     await tx.audienceQueue.deleteMany({
@@ -128,13 +131,12 @@ export async function leaveQueue(sessionId: string) {
 }
 
 export async function getQueue(sessionId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await requireAuth()
   if (!user) throw new Error("Not authenticated")
 
   const entries = await prisma.audienceQueue.findMany({
     where: { session_id: sessionId },
-    orderBy: [{ added_at: "asc" }, { id: "asc" }],
+    orderBy: [{ joined_queue: "asc" }, { id: "asc" }],
     include: {
       user: { select: { id: true, username: true, realname: true } },
     },
@@ -145,34 +147,60 @@ export async function getQueue(sessionId: string) {
     userId: entry.user_id,
     rank: index + 1,
     displayName: entry.user.realname || entry.user.username,
-    addedAt: entry.added_at.toISOString(),
+    addedAt: entry.joined_queue.toISOString(),
   }))
 }
 
-export async function promoteFromQueue(sessionId: string) {
-  // Require moderator/host
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: { host_id: true, moderator_id: true },
-  })
-  if (!session) throw new Error("Session not found")
-  if (session.host_id !== user.id && session.moderator_id !== user.id) {
-    throw new Error("Only moderator or host can promote from queue")
-  }
+export async function promoteFromQueue(sessionId: string, userId?: string) {
+  await requireHostOrModerator(sessionId)
 
   return prisma.$transaction(async (tx) => {
-    return doPromoteFromQueue(tx, sessionId)
+    if (userId) {
+      // Promote specific user
+      const queueEntry = await tx.audienceQueue.findUnique({
+        where: { session_id_user_id: { session_id: sessionId, user_id: userId } },
+      })
+      if (!queueEntry) throw new Error("No one in the queue")
+
+      await tx.participatesIn.update({
+        where: {
+          user_id_session_id: {
+            user_id: userId,
+            session_id: sessionId,
+          },
+        },
+        data: { session_role: SessionRole.DEBATER },
+      })
+      await tx.audienceQueue.delete({
+        where: {
+          session_id_user_id: {
+            session_id: sessionId,
+            user_id: userId,
+          },
+        },
+      })
+      await tx.roleHistory.create({
+        data: {
+          session_id: sessionId,
+          user_id: userId,
+          old_role: SessionRole.AUDIENCE,
+          new_role: SessionRole.DEBATER,
+          reason: "Promoted from queue",
+        },
+      })
+      return { promotedUserId: userId }
+    }
+
+    // FIFO promote
+    return doPromoteFromQueue(tx, sessionId).then((result) => {
+      if (!result) throw new Error("No one in the queue")
+      return { promotedUserId: result.userId }
+    })
   })
 }
 
 export async function castKickVote(sessionId: string, targetUserId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
+  const user = await requireAuth()
   if (user.id === targetUserId) throw new Error("Cannot vote to kick yourself")
 
   return prisma.$transaction(async (tx) => {
@@ -272,6 +300,17 @@ export async function castKickVote(sessionId: string, targetUserId: string) {
         },
       })
 
+      // Log role transition
+      await tx.roleHistory.create({
+        data: {
+          session_id: sessionId,
+          user_id: targetUserId,
+          old_role: SessionRole.DEBATER,
+          new_role: SessionRole.AUDIENCE,
+          reason: "Kicked by audience vote",
+        },
+      })
+
       // Auto-promote from queue
       await doPromoteFromQueue(tx, sessionId)
     }
@@ -281,9 +320,7 @@ export async function castKickVote(sessionId: string, targetUserId: string) {
 }
 
 export async function removeKickVote(sessionId: string, targetUserId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
+  const user = await requireAuth()
 
   await prisma.vote.deleteMany({
     where: {
@@ -296,8 +333,7 @@ export async function removeKickVote(sessionId: string, targetUserId: string) {
 }
 
 export async function getKickVotes(sessionId: string, targetUserId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await requireAuth()
   if (!user) throw new Error("Not authenticated")
 
   const [voteCount, audienceCount, userVote, session] = await Promise.all([

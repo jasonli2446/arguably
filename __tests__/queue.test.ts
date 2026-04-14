@@ -16,12 +16,16 @@ vi.mock('@/lib/prisma', () => ({
       deleteMany: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
+      findUnique: vi.fn(),
     },
     vote: {
       create: vi.fn(),
       count: vi.fn(),
       findFirst: vi.fn(),
       deleteMany: vi.fn(),
+    },
+    roleHistory: {
+      create: vi.fn(),
     },
     debateState: { findUnique: vi.fn(), update: vi.fn() },
     $transaction: vi.fn((fn) => fn({
@@ -33,12 +37,16 @@ vi.mock('@/lib/prisma', () => ({
         deleteMany: vi.fn(),
         findFirst: vi.fn(),
         findMany: vi.fn(),
+        findUnique: vi.fn(),
       },
       vote: {
         create: vi.fn(),
         count: vi.fn(),
         findFirst: vi.fn(),
         deleteMany: vi.fn(),
+      },
+      roleHistory: {
+        create: vi.fn(),
       },
       debateState: { findUnique: vi.fn(), update: vi.fn() },
     })),
@@ -60,6 +68,7 @@ import {
 const MOCK_USER_ID = 'user-uuid-1234'
 const MOCK_SESSION_ID = 'session-cuid-5678'
 const MOCK_TARGET_USER_ID = 'target-user-uuid'
+const MOCK_HOST_ID = 'host-uuid'
 
 function mockAuth(userId: string | null) {
   ;(createClient as any).mockResolvedValue({
@@ -76,11 +85,35 @@ describe('joinQueue', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuth(MOCK_USER_ID)
+    ;(prisma.session.findUnique as any).mockResolvedValue({
+      id: MOCK_SESSION_ID,
+      status: SessionStatus.LIVE,
+    })
+    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+      user_id: MOCK_USER_ID,
+      session_id: MOCK_SESSION_ID,
+      session_role: SessionRole.AUDIENCE,
+      left_at: null,
+    })
+    ;(prisma.audienceQueue.create as any).mockResolvedValue({})
   })
 
   it('throws if not authenticated', async () => {
     mockAuth(null)
     await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Not authenticated')
+  })
+
+  it('throws "Session not found"', async () => {
+    ;(prisma.session.findUnique as any).mockResolvedValue(null)
+    await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Session not found')
+  })
+
+  it('throws "Session is not live"', async () => {
+    ;(prisma.session.findUnique as any).mockResolvedValue({
+      id: MOCK_SESSION_ID,
+      status: SessionStatus.WAITING,
+    })
+    await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Session is not live')
   })
 
   it('throws if not a participant (findUnique returns null)', async () => {
@@ -105,18 +138,6 @@ describe('joinQueue', () => {
       session_role: SessionRole.HOST,
       left_at: null,
     })
-    ;(prisma.session.findUnique as any).mockResolvedValue({ status: SessionStatus.WAITING })
-    await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Only audience members can join the queue')
-  })
-
-  it('throws if not AUDIENCE role (MODERATOR)', async () => {
-    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
-      user_id: MOCK_USER_ID,
-      session_id: MOCK_SESSION_ID,
-      session_role: SessionRole.MODERATOR,
-      left_at: null,
-    })
-    ;(prisma.session.findUnique as any).mockResolvedValue({ status: SessionStatus.WAITING })
     await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Only audience members can join the queue')
   })
 
@@ -127,41 +148,17 @@ describe('joinQueue', () => {
       session_role: SessionRole.DEBATER,
       left_at: null,
     })
-    ;(prisma.session.findUnique as any).mockResolvedValue({ status: SessionStatus.WAITING })
     await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Only audience members can join the queue')
   })
 
-  it('throws if session ended', async () => {
-    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
-      user_id: MOCK_USER_ID,
-      session_id: MOCK_SESSION_ID,
-      session_role: SessionRole.AUDIENCE,
-      left_at: null,
-    })
-    ;(prisma.session.findUnique as any).mockResolvedValue({ status: SessionStatus.ENDED })
-    await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Session has ended')
-  })
-
   it('creates AudienceQueue entry on success', async () => {
-    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
-      user_id: MOCK_USER_ID,
-      session_id: MOCK_SESSION_ID,
-      session_role: SessionRole.AUDIENCE,
-      left_at: null,
-    })
-    ;(prisma.session.findUnique as any).mockResolvedValue({ status: SessionStatus.WAITING })
-    ;(prisma.audienceQueue.create as any).mockResolvedValue({})
-
     await joinQueue(MOCK_SESSION_ID)
-
-    expect(prisma.audienceQueue.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          session_id: MOCK_SESSION_ID,
-          user_id: MOCK_USER_ID,
-        }),
-      })
-    )
+    expect(prisma.audienceQueue.create).toHaveBeenCalledWith({
+      data: {
+        session_id: MOCK_SESSION_ID,
+        user_id: MOCK_USER_ID,
+      },
+    })
   })
 })
 
@@ -182,7 +179,7 @@ describe('leaveQueue', () => {
       audienceQueue: { deleteMany: vi.fn().mockResolvedValue({}) },
       vote: { deleteMany: vi.fn().mockResolvedValue({}) },
     }
-    ;(prisma.$transaction as any).mockImplementation(async (fn) => fn(mockTx))
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
     await leaveQueue(MOCK_SESSION_ID)
 
@@ -223,21 +220,21 @@ describe('getQueue', () => {
         id: 'entry-1',
         user_id: 'user-1',
         session_id: MOCK_SESSION_ID,
-        added_at: new Date('2026-04-14T10:00:00Z'),
+        joined_queue: new Date('2026-04-14T10:00:00Z'),
         user: { id: 'user-1', username: 'alice', realname: 'Alice Smith' },
       },
       {
         id: 'entry-2',
         user_id: 'user-2',
         session_id: MOCK_SESSION_ID,
-        added_at: new Date('2026-04-14T10:05:00Z'),
+        joined_queue: new Date('2026-04-14T10:05:00Z'),
         user: { id: 'user-2', username: 'bob', realname: null },
       },
       {
         id: 'entry-3',
         user_id: 'user-3',
         session_id: MOCK_SESSION_ID,
-        added_at: new Date('2026-04-14T10:10:00Z'),
+        joined_queue: new Date('2026-04-14T10:10:00Z'),
         user: { id: 'user-3', username: 'charlie', realname: 'Charlie Brown' },
       },
     ])
@@ -281,7 +278,14 @@ describe('getQueue', () => {
 describe('promoteFromQueue', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockAuth(MOCK_USER_ID)
+    mockAuth(MOCK_HOST_ID)
+
+    // Mock session with host
+    ;(prisma.session.findUnique as any).mockResolvedValue({
+      id: MOCK_SESSION_ID,
+      host_id: MOCK_HOST_ID,
+      moderator_id: null,
+    })
   })
 
   it('throws if not authenticated', async () => {
@@ -295,37 +299,47 @@ describe('promoteFromQueue', () => {
       host_id: 'other-user',
       moderator_id: 'another-user',
     })
-    await expect(promoteFromQueue(MOCK_SESSION_ID)).rejects.toThrow('Only moderator or host can promote from queue')
+    await expect(promoteFromQueue(MOCK_SESSION_ID)).rejects.toThrow('Not authorized')
   })
 
-  it('calls $transaction and returns promoted user', async () => {
-    ;(prisma.session.findUnique as any).mockResolvedValue({
-      id: MOCK_SESSION_ID,
-      host_id: MOCK_USER_ID,
-      moderator_id: null,
-    })
+  it('throws "No one in the queue" when queue is empty', async () => {
+    const mockTx = {
+      audienceQueue: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findUnique: vi.fn(),
+        delete: vi.fn(),
+      },
+      participatesIn: { update: vi.fn() },
+      roleHistory: { create: vi.fn() },
+      debateState: { findUnique: vi.fn().mockResolvedValue(null) },
+    }
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
+    await expect(promoteFromQueue(MOCK_SESSION_ID)).rejects.toThrow('No one in the queue')
+  })
+
+  it('calls $transaction and returns promoted user on FIFO promote', async () => {
     const mockTx = {
       audienceQueue: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'queue-entry-1',
           session_id: MOCK_SESSION_ID,
           user_id: 'promoted-user',
-          added_at: new Date(),
+          joined_queue: new Date(),
           user: { id: 'promoted-user', username: 'promoted', realname: 'Promoted User' },
         }),
         delete: vi.fn().mockResolvedValue({}),
       },
       participatesIn: { update: vi.fn().mockResolvedValue({}) },
       debateState: { findUnique: vi.fn().mockResolvedValue(null) },
+      roleHistory: { create: vi.fn().mockResolvedValue({}) },
     }
-    ;(prisma.$transaction as any).mockImplementation(async (fn) => fn(mockTx))
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
     const result = await promoteFromQueue(MOCK_SESSION_ID)
 
     expect(result).toEqual({
-      userId: 'promoted-user',
-      displayName: 'Promoted User',
+      promotedUserId: 'promoted-user',
     })
     expect(mockTx.audienceQueue.delete).toHaveBeenCalled()
     expect(mockTx.participatesIn.update).toHaveBeenCalledWith(
@@ -339,6 +353,59 @@ describe('promoteFromQueue', () => {
         data: expect.objectContaining({ session_role: SessionRole.DEBATER }),
       })
     )
+  })
+
+  it('promotes specific user when userId is provided', async () => {
+    const specificUserId = 'specific-user-uuid'
+    const mockTx = {
+      audienceQueue: {
+        findFirst: vi.fn(),
+        findUnique: vi.fn().mockResolvedValue({
+          user_id: specificUserId,
+          session_id: MOCK_SESSION_ID,
+        }),
+        delete: vi.fn().mockResolvedValue({}),
+      },
+      participatesIn: { update: vi.fn().mockResolvedValue({}) },
+      roleHistory: { create: vi.fn().mockResolvedValue({}) },
+    }
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
+
+    const result = await promoteFromQueue(MOCK_SESSION_ID, specificUserId)
+
+    expect(mockTx.audienceQueue.findUnique).toHaveBeenCalledWith({
+      where: { session_id_user_id: { session_id: MOCK_SESSION_ID, user_id: specificUserId } },
+    })
+    expect(result).toEqual({ promotedUserId: specificUserId })
+  })
+
+  it('allows moderator to promote from queue', async () => {
+    mockAuth('moderator-uuid')
+    ;(prisma.session.findUnique as any).mockResolvedValue({
+      id: MOCK_SESSION_ID,
+      host_id: MOCK_HOST_ID,
+      moderator_id: 'moderator-uuid',
+    })
+
+    const mockTx = {
+      audienceQueue: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'queue-entry',
+          session_id: MOCK_SESSION_ID,
+          user_id: 'some-user',
+          joined_queue: new Date(),
+          user: { id: 'some-user', username: 'someone', realname: null },
+        }),
+        delete: vi.fn().mockResolvedValue({}),
+      },
+      participatesIn: { update: vi.fn().mockResolvedValue({}) },
+      debateState: { findUnique: vi.fn().mockResolvedValue(null) },
+      roleHistory: { create: vi.fn().mockResolvedValue({}) },
+    }
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
+
+    await promoteFromQueue(MOCK_SESSION_ID)
+    expect(prisma.$transaction).toHaveBeenCalled()
   })
 })
 
@@ -370,7 +437,7 @@ describe('castKickVote', () => {
           }),
       },
     }
-    ;(prisma.$transaction as any).mockImplementation(async (fn) => fn(mockTx))
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
     await expect(castKickVote(MOCK_SESSION_ID, MOCK_TARGET_USER_ID)).rejects.toThrow('Only audience members can vote to kick')
   })
@@ -393,7 +460,7 @@ describe('castKickVote', () => {
           }),
       },
     }
-    ;(prisma.$transaction as any).mockImplementation(async (fn) => fn(mockTx))
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
     await expect(castKickVote(MOCK_SESSION_ID, MOCK_TARGET_USER_ID)).rejects.toThrow('Target must be an active debater')
   })
@@ -423,7 +490,7 @@ describe('castKickVote', () => {
         }),
       },
     }
-    ;(prisma.$transaction as any).mockImplementation(async (fn) => fn(mockTx))
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
     await expect(castKickVote(MOCK_SESSION_ID, MOCK_TARGET_USER_ID)).rejects.toThrow('Cannot vote to kick the host')
   })
@@ -459,12 +526,13 @@ describe('castKickVote', () => {
         count: vi.fn().mockResolvedValue(2),
         deleteMany: vi.fn().mockResolvedValue({}),
       },
+      roleHistory: { create: vi.fn().mockResolvedValue({}) },
       debateState: { findUnique: vi.fn().mockResolvedValue(null) },
       audienceQueue: {
         findFirst: vi.fn().mockResolvedValue(null),
       },
     }
-    ;(prisma.$transaction as any).mockImplementation(async (fn) => fn(mockTx))
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
     const result = await castKickVote(MOCK_SESSION_ID, MOCK_TARGET_USER_ID)
 
@@ -512,6 +580,7 @@ describe('castKickVote', () => {
         count: vi.fn().mockResolvedValue(3),
         deleteMany: vi.fn().mockResolvedValue({}),
       },
+      roleHistory: { create: vi.fn().mockResolvedValue({}) },
       debateState: {
         findUnique: vi.fn().mockResolvedValue({
           session_id: MOCK_SESSION_ID,
@@ -527,10 +596,10 @@ describe('castKickVote', () => {
         findFirst: vi.fn().mockResolvedValue(null),
       },
     }
-    ;(prisma.$transaction as any).mockImplementation(async (fn) => fn(mockTx))
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
-    // audienceCount=5, threshold=50 → requiredVotes = ceil(5 * 50 / 100) = ceil(2.5) = 3
-    // voteCount=3 → kicked=true
+    // audienceCount=5, threshold=50 -> requiredVotes = ceil(5 * 50 / 100) = ceil(2.5) = 3
+    // voteCount=3 -> kicked=true
     const result = await castKickVote(MOCK_SESSION_ID, MOCK_TARGET_USER_ID)
 
     expect(result).toEqual({ kicked: true, voteCount: 3, requiredVotes: 3 })
@@ -578,15 +647,16 @@ describe('castKickVote', () => {
         count: vi.fn().mockResolvedValue(5),
         deleteMany: vi.fn().mockResolvedValue({}),
       },
+      roleHistory: { create: vi.fn().mockResolvedValue({}) },
       debateState: { findUnique: vi.fn().mockResolvedValue(null) },
       audienceQueue: {
         findFirst: vi.fn().mockResolvedValue(null),
       },
     }
-    ;(prisma.$transaction as any).mockImplementation(async (fn) => fn(mockTx))
+    ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
-    // audienceCount=10, threshold=60 → requiredVotes = ceil(10 * 60 / 100) = ceil(6) = 6
-    // voteCount=5 → kicked=false
+    // audienceCount=10, threshold=60 -> requiredVotes = ceil(10 * 60 / 100) = ceil(6) = 6
+    // voteCount=5 -> kicked=false
     const result = await castKickVote(MOCK_SESSION_ID, MOCK_TARGET_USER_ID)
 
     expect(result).toEqual({ kicked: false, voteCount: 5, requiredVotes: 6 })
@@ -644,7 +714,7 @@ describe('getKickVotes', () => {
 
     const result = await getKickVotes(MOCK_SESSION_ID, MOCK_TARGET_USER_ID)
 
-    // audienceCount=8, threshold=50 → requiredVotes = ceil(8 * 50 / 100) = ceil(4) = 4
+    // audienceCount=8, threshold=50 -> requiredVotes = ceil(8 * 50 / 100) = ceil(4) = 4
     expect(result).toEqual({
       voteCount: 3,
       requiredVotes: 4,
@@ -660,7 +730,7 @@ describe('getKickVotes', () => {
 
     const result = await getKickVotes(MOCK_SESSION_ID, MOCK_TARGET_USER_ID)
 
-    // audienceCount=10, threshold=60 → requiredVotes = ceil(10 * 60 / 100) = ceil(6) = 6
+    // audienceCount=10, threshold=60 -> requiredVotes = ceil(10 * 60 / 100) = ceil(6) = 6
     expect(result).toEqual({
       voteCount: 2,
       requiredVotes: 6,

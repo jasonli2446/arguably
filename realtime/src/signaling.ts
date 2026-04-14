@@ -1,20 +1,13 @@
 import type { Server as SocketIOServer, Socket } from "socket.io";
-import type {
-  Peer,
-  JoinRequest,
-  CreateTransportRequest,
-  ConnectTransportRequest,
-  ProduceRequest,
-  ConsumeRequest,
-  ResumeConsumerRequest,
-  CloseProducerRequest,
-} from "./types.js";
+import type { Peer } from "./types.js";
 import { iceServers } from "./config.js";
 import { getOrCreateRoom, addPeerToRoom, removePeerFromRoom, getRoom } from "./mediasoup/rooms.js";
 import { createWebRtcTransport, getTransportOptions } from "./mediasoup/transports.js";
 import { createProducer } from "./mediasoup/producers.js";
 import { createConsumer } from "./mediasoup/consumers.js";
 import type { RtpCapabilities } from "mediasoup/types";
+import { schemas, validatePayload } from "./validation.js";
+
 // Track which room each socket is in
 const socketRoomMap = new Map<string, string>();
 const socketPeerMap = new Map<string, { rtpCapabilities: RtpCapabilities }>();
@@ -24,9 +17,12 @@ export function setupSignaling(io: SocketIOServer): void {
     console.log(`Socket connected [id:${socket.id}]`);
 
     // ── getRouterRtpCapabilities ──
-    socket.on("getRouterRtpCapabilities", async (data: { roomId: string }, callback) => {
+    socket.on("getRouterRtpCapabilities", async (data: unknown, callback) => {
       try {
-        const room = await getOrCreateRoom(data.roomId);
+        const parsed = validatePayload(schemas.getRouterRtpCapabilities, data);
+        if (!parsed.success) return callback({ success: false, error: parsed.error });
+
+        const room = await getOrCreateRoom(parsed.data.roomId);
         callback({
           success: true,
           rtpCapabilities: room.router.rtpCapabilities,
@@ -39,29 +35,33 @@ export function setupSignaling(io: SocketIOServer): void {
     });
 
     // ── joinRoom ──
-    socket.on("joinRoom", async (data: JoinRequest, callback) => {
+    socket.on("joinRoom", async (data: unknown, callback) => {
       try {
-        const room = await getOrCreateRoom(data.roomId);
+        const parsed = validatePayload(schemas.joinRoom, data);
+        if (!parsed.success) return callback({ success: false, error: parsed.error });
+
+        const { roomId, displayName, rtpCapabilities } = parsed.data;
+        const room = await getOrCreateRoom(roomId);
 
         const peer: Peer = {
           id: socket.id,
-          displayName: data.displayName,
+          displayName,
           transports: new Map(),
           producers: new Map(),
           consumers: new Map(),
         };
 
         addPeerToRoom(room, peer);
-        socketRoomMap.set(socket.id, data.roomId);
-        socketPeerMap.set(socket.id, { rtpCapabilities: data.rtpCapabilities });
+        socketRoomMap.set(socket.id, roomId);
+        socketPeerMap.set(socket.id, { rtpCapabilities: rtpCapabilities as RtpCapabilities });
 
         // Join socket.io room for broadcasting
-        socket.join(data.roomId);
+        socket.join(roomId);
 
         // Notify other peers
-        socket.to(data.roomId).emit("peerJoined", {
+        socket.to(roomId).emit("peerJoined", {
           peerId: socket.id,
-          displayName: data.displayName,
+          displayName,
         });
 
         // Return list of existing peers
@@ -77,8 +77,11 @@ export function setupSignaling(io: SocketIOServer): void {
     });
 
     // ── createWebRtcTransport ──
-    socket.on("createWebRtcTransport", async (data: CreateTransportRequest, callback) => {
+    socket.on("createWebRtcTransport", async (data: unknown, callback) => {
       try {
+        const parsed = validatePayload(schemas.createWebRtcTransport, data);
+        if (!parsed.success) return callback({ success: false, error: parsed.error });
+
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) throw new Error("Not in a room");
 
@@ -109,8 +112,11 @@ export function setupSignaling(io: SocketIOServer): void {
     });
 
     // ── connectTransport ──
-    socket.on("connectTransport", async (data: ConnectTransportRequest, callback) => {
+    socket.on("connectTransport", async (data: unknown, callback) => {
       try {
+        const parsed = validatePayload(schemas.connectTransport, data);
+        if (!parsed.success) return callback({ success: false, error: parsed.error });
+
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) throw new Error("Not in a room");
 
@@ -120,10 +126,12 @@ export function setupSignaling(io: SocketIOServer): void {
         const peer = room.peers.get(socket.id);
         if (!peer) throw new Error("Peer not found");
 
-        const transport = peer.transports.get(data.transportId);
+        const transport = peer.transports.get(parsed.data.transportId);
         if (!transport) throw new Error("Transport not found");
 
-        await transport.connect({ dtlsParameters: data.dtlsParameters });
+        await transport.connect({
+          dtlsParameters: parsed.data.dtlsParameters,
+        } as Parameters<typeof transport.connect>[0]);
 
         callback({ success: true });
       } catch (error) {
@@ -133,8 +141,11 @@ export function setupSignaling(io: SocketIOServer): void {
     });
 
     // ── produce ──
-    socket.on("produce", async (data: ProduceRequest, callback) => {
+    socket.on("produce", async (data: unknown, callback) => {
       try {
+        const parsed = validatePayload(schemas.produce, data);
+        if (!parsed.success) return callback({ success: false, error: parsed.error });
+
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) throw new Error("Not in a room");
 
@@ -144,14 +155,14 @@ export function setupSignaling(io: SocketIOServer): void {
         const peer = room.peers.get(socket.id);
         if (!peer) throw new Error("Peer not found");
 
-        const transport = peer.transports.get(data.transportId);
+        const transport = peer.transports.get(parsed.data.transportId);
         if (!transport) throw new Error("Transport not found");
 
         const producer = await createProducer(
           transport,
-          data.kind,
-          data.rtpParameters,
-          data.appData,
+          parsed.data.kind,
+          parsed.data.rtpParameters as Parameters<typeof createProducer>[2],
+          parsed.data.appData,
         );
 
         peer.producers.set(producer.id, producer);
@@ -176,8 +187,11 @@ export function setupSignaling(io: SocketIOServer): void {
     });
 
     // ── consume ──
-    socket.on("consume", async (data: ConsumeRequest, callback) => {
+    socket.on("consume", async (data: unknown, callback) => {
       try {
+        const parsed = validatePayload(schemas.consume, data);
+        if (!parsed.success) return callback({ success: false, error: parsed.error });
+
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) throw new Error("Not in a room");
 
@@ -199,7 +213,7 @@ export function setupSignaling(io: SocketIOServer): void {
         let producerPeerId = "";
         let producerDisplayName = "";
         for (const [, roomPeer] of room.peers) {
-          if (roomPeer.producers.has(data.producerId)) {
+          if (roomPeer.producers.has(parsed.data.producerId)) {
             producerPeerId = roomPeer.id;
             producerDisplayName = roomPeer.displayName;
             break;
@@ -209,7 +223,7 @@ export function setupSignaling(io: SocketIOServer): void {
         const consumer = await createConsumer(
           room.router,
           transport,
-          data.producerId,
+          parsed.data.producerId,
           peerData.rtpCapabilities,
         );
 
@@ -221,13 +235,13 @@ export function setupSignaling(io: SocketIOServer): void {
 
         consumer.on("producerclose", () => {
           peer.consumers.delete(consumer.id);
-          socket.emit("producerClosed", { producerId: data.producerId });
+          socket.emit("producerClosed", { producerId: parsed.data.producerId });
         });
 
         callback({
           success: true,
           id: consumer.id,
-          producerId: data.producerId,
+          producerId: parsed.data.producerId,
           kind: consumer.kind,
           rtpParameters: consumer.rtpParameters,
           peerId: producerPeerId,
@@ -240,8 +254,11 @@ export function setupSignaling(io: SocketIOServer): void {
     });
 
     // ── resumeConsumer ──
-    socket.on("resumeConsumer", async (data: ResumeConsumerRequest, callback) => {
+    socket.on("resumeConsumer", async (data: unknown, callback) => {
       try {
+        const parsed = validatePayload(schemas.resumeConsumer, data);
+        if (!parsed.success) return callback({ success: false, error: parsed.error });
+
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) throw new Error("Not in a room");
 
@@ -251,7 +268,7 @@ export function setupSignaling(io: SocketIOServer): void {
         const peer = room.peers.get(socket.id);
         if (!peer) throw new Error("Peer not found");
 
-        const consumer = peer.consumers.get(data.consumerId);
+        const consumer = peer.consumers.get(parsed.data.consumerId);
         if (!consumer) throw new Error("Consumer not found");
 
         await consumer.resume();
@@ -263,8 +280,11 @@ export function setupSignaling(io: SocketIOServer): void {
     });
 
     // ── closeProducer ──
-    socket.on("closeProducer", async (data: CloseProducerRequest, callback) => {
+    socket.on("closeProducer", async (data: unknown, callback) => {
       try {
+        const parsed = validatePayload(schemas.closeProducer, data);
+        if (!parsed.success) return callback({ success: false, error: parsed.error });
+
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) throw new Error("Not in a room");
 
@@ -274,15 +294,15 @@ export function setupSignaling(io: SocketIOServer): void {
         const peer = room.peers.get(socket.id);
         if (!peer) throw new Error("Peer not found");
 
-        const producer = peer.producers.get(data.producerId);
+        const producer = peer.producers.get(parsed.data.producerId);
         if (!producer) throw new Error("Producer not found");
 
         producer.close();
-        peer.producers.delete(data.producerId);
+        peer.producers.delete(parsed.data.producerId);
 
         // Notify other peers
         socket.to(roomId).emit("producerClosed", {
-          producerId: data.producerId,
+          producerId: parsed.data.producerId,
         });
 
         callback({ success: true });
@@ -293,8 +313,10 @@ export function setupSignaling(io: SocketIOServer): void {
     });
 
     // ── getProducers ──
-    socket.on("getProducers", async (_data: unknown, callback) => {
+    socket.on("getProducers", async (data: unknown, callback) => {
       try {
+        validatePayload(schemas.getProducers, data);
+
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) throw new Error("Not in a room");
 
@@ -347,7 +369,6 @@ export function setupSignaling(io: SocketIOServer): void {
         socketRoomMap.delete(socket.id);
         socketPeerMap.delete(socket.id);
       }
-
     });
   });
 }
