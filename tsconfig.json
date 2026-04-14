@@ -30,5 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "realtime", "__tests__/sfu"]
+  "exclude": ["node_modules", "realtime", "__tests__/sfu", "__tests__/realtime"]
 }

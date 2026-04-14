@@ -105,6 +105,7 @@ function createMockSocket(id = 'socket-1') {
     handlers,
     emittedEvents,
     emittedToRoom,
+    handshake: { auth: {} },
     on(event: string, handler: Function) {
       handlers.set(event, handler)
     },

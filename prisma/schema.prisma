@@ -67,27 +67,11 @@ model User {
   created_at DateTime      @default(now())
 
   // Profile
-  bio String?
+  bio        String?
+  deleted_at DateTime?
 
-  // Notification preferences
-  notify_invitations   Boolean @default(true)
-  notify_messages      Boolean @default(true)
-  notify_weekly_digest Boolean @default(false)
-
-  // Privacy preferences
-  profile_visibility    String  @default("public")
-  show_online_status    Boolean @default(true)
-  allow_direct_messages Boolean @default(true)
-
-  // Appearance preferences
-  theme              String  @default("dark")
-  font_size          String  @default("medium")
-  animations_enabled Boolean @default(true)
-
-  // Language & region preferences
-  language    String @default("en")
-  timezone    String @default("UTC")
-  date_format String @default("MM/DD/YYYY")
+  // User preferences stored as JSON (notifications, privacy, appearance, language)
+  preferences Json?
 
   // Relations
   hosted_sessions    Session[]        @relation("HostToSession")

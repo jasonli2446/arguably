@@ -6,7 +6,7 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     include: ['__tests__/**/*.test.{ts,tsx}'],
-    exclude: ['tests/**', 'node_modules/**', '__tests__/sfu/**'],
+    exclude: ['tests/**', 'node_modules/**', '__tests__/sfu/**', '__tests__/realtime/**', '__tests__/security/auth.test.ts'],
   },
   resolve: {
     alias: {

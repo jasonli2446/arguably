@@ -10,6 +10,7 @@
     "test": "playwright test",
     "test:e2e": "playwright test",
     "test:unit": "vitest run",
+    "test:sfu": "vitest run --config vitest.sfu.config.ts",
     "postinstall": "prisma generate",
     "realtime:dev": "npm --prefix realtime run dev",
     "realtime:docker:up": "npm --prefix realtime run docker:up",
