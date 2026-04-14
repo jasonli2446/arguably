@@ -192,6 +192,32 @@ export async function resumeDebate(sessionId: string) {
   })
 }
 
+export async function extendTurn(sessionId: string, extraSeconds: number) {
+  await requireModerator(sessionId)
+
+  const state = await prisma.debateState.findUnique({
+    where: { session_id: sessionId },
+  })
+  if (!state) throw new Error("No active debate")
+
+  if (state.is_paused) {
+    await prisma.debateState.update({
+      where: { session_id: sessionId },
+      data: {
+        paused_time_remaining: state.paused_time_remaining + extraSeconds,
+      },
+    })
+  } else {
+    if (!state.turn_ends_at) throw new Error("No active turn")
+    await prisma.debateState.update({
+      where: { session_id: sessionId },
+      data: {
+        turn_ends_at: state.turn_ends_at + extraSeconds * 1000,
+      },
+    })
+  }
+}
+
 export async function endDebate(sessionId: string) {
   await requireModerator(sessionId)
   await prisma.debateState

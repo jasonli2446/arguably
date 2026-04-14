@@ -385,6 +385,35 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
   })
 }
 
+export async function promoteToDebater(sessionId: string, targetUserId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { host_id: true, moderator_id: true, status: true },
+  })
+  if (!session) throw new Error("Session not found")
+  if (session.host_id !== user.id && session.moderator_id !== user.id) {
+    throw new Error("Only moderators or hosts can promote participants")
+  }
+  if (session.status !== SessionStatus.WAITING) {
+    throw new Error("Can only promote participants before the debate starts")
+  }
+  if (targetUserId === user.id) throw new Error("Cannot promote yourself")
+
+  await prisma.participatesIn.update({
+    where: {
+      user_id_session_id: {
+        user_id: targetUserId,
+        session_id: sessionId,
+      },
+    },
+    data: { session_role: SessionRole.DEBATER },
+  })
+}
+
 export async function updateSessionStatus(sessionId: string, status: SessionStatus) {
     
     const supabase = await createClient()
