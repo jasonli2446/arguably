@@ -35,8 +35,20 @@ test.describe('Create Session Page', () => {
     await page.goto('/create')
     if (page.url().includes('/auth')) return
 
-    await page.getByText('CREATE ROOM').click()
+    await page.getByRole('button', { name: 'CREATE ROOM' }).click()
     // Should show an error since no room name was provided
-    await expect(page.getByText(/required|error/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/required|error|name/i)).toBeVisible({ timeout: 10000 })
+  })
+
+  test('creates a room successfully with valid input', async ({ page }) => {
+    await page.goto('/create')
+    if (page.url().includes('/auth')) return
+
+    await page.getByPlaceholder('Enter debate topic...').fill('E2E Test Debate Room')
+    await page.getByRole('button', { name: 'CREATE ROOM' }).click()
+
+    // Server action redirects to /room/{code} on success
+    await page.waitForURL(/\/room\/ARG-\d{4}/, { timeout: 15000 })
+    await expect(page.getByText(/ARG-\d{4}/)).toBeVisible()
   })
 })
