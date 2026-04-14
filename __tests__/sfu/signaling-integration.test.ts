@@ -243,7 +243,7 @@ describe('Signaling Integration', () => {
     expect(resumeResult.success).toBe(true)
   })
 
-  it('disconnect triggers peerLeft for remaining client', async () => {
+  it('disconnect triggers peerReconnecting for remaining client (grace period)', async () => {
     const client1 = await createTestClient()
     const client2 = await createTestClient()
     const roomId = 'int-room-4'
@@ -263,16 +263,16 @@ describe('Signaling Integration', () => {
       rtpCapabilities: { codecs: [] },
     })
 
-    // Listen for peerLeft on client1
-    const peerLeftPromise = new Promise<any>((resolve) => {
-      client1.on('peerLeft', resolve)
+    // Listen for peerReconnecting on client1 (fires immediately, unlike peerLeft which waits 30s)
+    const peerReconnectingPromise = new Promise<any>((resolve) => {
+      client1.on('peerReconnecting', resolve)
     })
 
     // Client 2 disconnects
     client2.disconnect()
 
-    const peerLeftData = await peerLeftPromise
-    expect(peerLeftData.displayName).toBe('Bob')
+    const reconnectingData = await peerReconnectingPromise
+    expect(reconnectingData.displayName).toBe('Bob')
   })
 
   it('returns error when emitting before joining a room', async () => {

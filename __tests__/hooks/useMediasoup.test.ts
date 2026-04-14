@@ -1,9 +1,31 @@
 // @vitest-environment jsdom
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook, act, waitFor } from '@testing-library/react'
 
-// ── Mock socket.io-client ──
+// ── Mocks ──
+
+const mockSendTransport = {
+  id: 'send-transport-id',
+  on: vi.fn(),
+  produce: vi.fn(),
+  close: vi.fn(),
+}
+
+const mockRecvTransport = {
+  id: 'recv-transport-id',
+  on: vi.fn(),
+  consume: vi.fn(),
+  close: vi.fn(),
+}
+
+const mockDevice = {
+  load: vi.fn(),
+  loaded: false,
+  rtpCapabilities: { codecs: [] },
+  createSendTransport: vi.fn(() => mockSendTransport),
+  createRecvTransport: vi.fn(() => mockRecvTransport),
+}
 
 const mockSocket = {
   on: vi.fn(),
@@ -16,59 +38,9 @@ vi.mock('socket.io-client', () => ({
   io: vi.fn(() => mockSocket),
 }))
 
-// ── Mock mediasoup-client ──
-
-const mockSendTransport = {
-  id: 'send-transport-1',
-  on: vi.fn(),
-  produce: vi.fn(),
-  close: vi.fn(),
-}
-
-const mockRecvTransport = {
-  id: 'recv-transport-1',
-  on: vi.fn(),
-  consume: vi.fn(),
-  close: vi.fn(),
-}
-
-const mockDevice = {
-  load: vi.fn(),
-  rtpCapabilities: { codecs: [] },
-  createSendTransport: vi.fn(() => mockSendTransport),
-  createRecvTransport: vi.fn(() => mockRecvTransport),
-}
-
 vi.mock('mediasoup-client', () => ({
   Device: vi.fn(() => mockDevice),
 }))
-
-// ── Mock getUserMedia ──
-
-const mockVideoTrack = {
-  kind: 'video',
-  enabled: true,
-  stop: vi.fn(),
-}
-
-const mockAudioTrack = {
-  kind: 'audio',
-  enabled: true,
-  stop: vi.fn(),
-}
-
-const mockMediaStream = {
-  getVideoTracks: () => [mockVideoTrack],
-  getAudioTracks: () => [mockAudioTrack],
-  getTracks: () => [mockVideoTrack, mockAudioTrack],
-}
-
-Object.defineProperty(global.navigator, 'mediaDevices', {
-  value: {
-    getUserMedia: vi.fn().mockResolvedValue(mockMediaStream),
-  },
-  writable: true,
-})
 
 // ── Import after mocks ──
 
@@ -83,183 +55,645 @@ function getSocketHandler(event: string): Function | undefined {
   return undefined
 }
 
-function getSocketEmitAck(event: string): { data: any; callback: Function } | undefined {
-  for (const call of mockSocket.emit.mock.calls) {
-    if (call[0] === event) {
-      return { data: call[1], callback: call[2] }
-    }
-  }
-  return undefined
-}
-
-const defaultOptions = {
-  sfuUrl: 'http://localhost:3001',
-  roomId: 'test-room',
-  displayName: 'TestUser',
-  enabled: true,
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  mockSocket.connected = true
-  mockVideoTrack.enabled = true
-  mockAudioTrack.enabled = true
-})
+// ── Tests ──
 
 describe('useMediasoup', () => {
-  describe('disabled/missing params', () => {
-    it('stays disconnected when enabled is false', () => {
-      const { result } = renderHook(() =>
-        useMediasoup({ ...defaultOptions, enabled: false })
-      )
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockDevice.loaded = false
+    mockSocket.connected = true
 
-      expect(result.current.connectionState).toBe('disconnected')
-      expect(result.current.localStream).toBeNull()
-      expect(result.current.remoteStreams.size).toBe(0)
+    // Default: emit with ack returns success
+    mockSocket.emit.mockImplementation((event: string, data: any, callback?: Function) => {
+      if (callback) {
+        // Default responses
+        if (event === 'getRouterRtpCapabilities') {
+          callback({ success: true, rtpCapabilities: { codecs: [] }, iceServers: [] })
+        } else if (event === 'joinRoom') {
+          callback({ success: true, stablePeerId: 'stable-peer-123' })
+        } else if (event === 'createWebRtcTransport') {
+          callback({
+            success: true,
+            transportOptions: {
+              id: data.direction === 'send' ? 'send-transport-id' : 'recv-transport-id',
+              iceParameters: {},
+              iceCandidates: [],
+              dtlsParameters: {},
+            },
+          })
+        } else if (event === 'getProducers') {
+          callback({ success: true, producers: [] })
+        } else {
+          callback({ success: true })
+        }
+      }
     })
 
-    it('stays disconnected when sfuUrl is undefined', () => {
-      const { result } = renderHook(() =>
-        useMediasoup({ ...defaultOptions, sfuUrl: undefined })
-      )
-
-      expect(result.current.connectionState).toBe('disconnected')
+    mockSendTransport.produce.mockResolvedValue({
+      id: 'producer-id',
+      close: vi.fn(),
     })
 
-    it('stays disconnected when roomId is empty', () => {
-      const { result } = renderHook(() =>
-        useMediasoup({ ...defaultOptions, roomId: '' })
-      )
-
-      expect(result.current.connectionState).toBe('disconnected')
+    mockRecvTransport.consume.mockResolvedValue({
+      id: 'consumer-id',
+      track: { kind: 'audio', enabled: true },
+      close: vi.fn(),
+      producerId: 'remote-producer-id',
     })
 
-    it('stays disconnected when displayName is empty', () => {
-      const { result } = renderHook(() =>
-        useMediasoup({ ...defaultOptions, displayName: '' })
-      )
-
-      expect(result.current.connectionState).toBe('disconnected')
+    // Mock getUserMedia
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getVideoTracks: () => [{ readyState: 'live', enabled: true }],
+          getAudioTracks: () => [{ readyState: 'live', enabled: true }],
+          getTracks: () => [{ stop: vi.fn() }],
+        }),
+      },
+      configurable: true,
     })
   })
 
-  describe('connection', () => {
-    it('sets connectionState to connecting when enabled', async () => {
-      renderHook(() => useMediasoup(defaultOptions))
+  // ────────────────────────────────────────────────────────────────────
+  // Existing tests (updated for new shape)
+  // ────────────────────────────────────────────────────────────────────
 
-      // The effect triggers async connect(), which sets state to 'connecting'
-      // We need to wait for the async module imports
-      await vi.waitFor(() => {
-        expect(mockSocket.on).toHaveBeenCalled()
+  it('should stay disconnected when disabled', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: false,
       })
+    )
+
+    expect(result.current.connectionState).toBe('disconnected')
+    expect(result.current.localStream).toBeNull()
+    expect(result.current.remoteStreams.size).toBe(0)
+    expect(result.current.reconnectingPeers.size).toBe(0)
+  })
+
+  it('should stay disconnected when sfuUrl is missing', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: undefined,
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    expect(result.current.connectionState).toBe('disconnected')
+    expect(result.current.localStream).toBeNull()
+    expect(result.current.remoteStreams.size).toBe(0)
+    expect(result.current.reconnectingPeers.size).toBe(0)
+  })
+
+  it('should stay disconnected when roomId is missing', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: '',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    expect(result.current.connectionState).toBe('disconnected')
+    expect(result.current.localStream).toBeNull()
+    expect(result.current.remoteStreams.size).toBe(0)
+    expect(result.current.reconnectingPeers.size).toBe(0)
+  })
+
+  it('should stay disconnected when displayName is missing', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: '',
+        enabled: true,
+      })
+    )
+
+    expect(result.current.connectionState).toBe('disconnected')
+    expect(result.current.localStream).toBeNull()
+    expect(result.current.remoteStreams.size).toBe(0)
+    expect(result.current.reconnectingPeers.size).toBe(0)
+  })
+
+  it('should set connecting state on mount', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
+  })
+
+  it('should set error state on connect_error when no previous connection', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
     })
 
-    it('sets connectionState to error on connect_error', async () => {
-      const { result } = renderHook(() => useMediasoup(defaultOptions))
+    const connectErrorHandler = getSocketHandler('connect_error')
+    expect(connectErrorHandler).toBeDefined()
 
-      await vi.waitFor(() => {
-        expect(mockSocket.on).toHaveBeenCalled()
-      })
+    act(() => {
+      connectErrorHandler!(new Error('Connection failed'))
+    })
 
-      const connectErrorHandler = getSocketHandler('connect_error')
-      expect(connectErrorHandler).toBeDefined()
-
-      await act(async () => {
-        connectErrorHandler!(new Error('Connection refused'))
-      })
-
+    await waitFor(() => {
       expect(result.current.connectionState).toBe('error')
     })
   })
 
-  describe('toggleMute', () => {
-    it('toggles audio track enabled state', async () => {
-      const { result } = renderHook(() => useMediasoup(defaultOptions))
+  it('should toggle audio mute', async () => {
+    const mockTrack = {
+      readyState: 'live',
+      enabled: true,
+      stop: vi.fn(),
+    }
+    const mockStream = {
+      getVideoTracks: () => [mockTrack],
+      getAudioTracks: () => [mockTrack],
+      getTracks: () => [mockTrack],
+    }
+    ;(global.navigator.mediaDevices.getUserMedia as any).mockResolvedValue(mockStream)
 
-      // Simulate the full connection flow to populate localStreamRef
-      await vi.waitFor(() => {
-        expect(mockSocket.on).toHaveBeenCalled()
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
       })
+    )
 
-      // We can't easily complete the full async flow in unit tests,
-      // but we can test toggleMute returns without error when no stream
-      expect(result.current.audioMuted).toBe(false)
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
 
-      act(() => {
-        result.current.toggleMute()
+    // Trigger connect to set up localStream
+    const connectHandler = getSocketHandler('connect')
+    if (connectHandler) {
+      await act(async () => {
+        await connectHandler()
       })
+    }
 
-      // Without a local stream, toggleMute is a no-op
+    await waitFor(() => {
+      expect(result.current.localStream).not.toBeNull()
+    })
+
+    expect(result.current.audioMuted).toBe(false)
+
+    act(() => {
+      result.current.toggleMute()
+    })
+
+    await waitFor(() => {
+      expect(result.current.audioMuted).toBe(true)
+    })
+
+    act(() => {
+      result.current.toggleMute()
+    })
+
+    await waitFor(() => {
       expect(result.current.audioMuted).toBe(false)
     })
   })
 
-  describe('toggleVideo', () => {
-    it('toggles video track enabled state', async () => {
-      const { result } = renderHook(() => useMediasoup(defaultOptions))
+  it('should toggle video off', async () => {
+    const mockTrack = {
+      readyState: 'live',
+      enabled: true,
+      stop: vi.fn(),
+    }
+    const mockStream = {
+      getVideoTracks: () => [mockTrack],
+      getAudioTracks: () => [mockTrack],
+      getTracks: () => [mockTrack],
+    }
+    ;(global.navigator.mediaDevices.getUserMedia as any).mockResolvedValue(mockStream)
 
-      await vi.waitFor(() => {
-        expect(mockSocket.on).toHaveBeenCalled()
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
       })
+    )
 
-      expect(result.current.videoOff).toBe(false)
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
 
-      act(() => {
-        result.current.toggleVideo()
+    // Trigger connect to set up localStream
+    const connectHandler = getSocketHandler('connect')
+    if (connectHandler) {
+      await act(async () => {
+        await connectHandler()
       })
+    }
 
-      // Without a local stream, toggleVideo is a no-op
+    await waitFor(() => {
+      expect(result.current.localStream).not.toBeNull()
+    })
+
+    expect(result.current.videoOff).toBe(false)
+
+    act(() => {
+      result.current.toggleVideo()
+    })
+
+    await waitFor(() => {
+      expect(result.current.videoOff).toBe(true)
+    })
+
+    act(() => {
+      result.current.toggleVideo()
+    })
+
+    await waitFor(() => {
       expect(result.current.videoOff).toBe(false)
     })
   })
 
-  describe('disconnect', () => {
-    it('sets state to disconnected and disconnects socket', async () => {
-      const { result } = renderHook(() => useMediasoup(defaultOptions))
-
-      await vi.waitFor(() => {
-        expect(mockSocket.on).toHaveBeenCalled()
+  it('should call cleanup on disconnect', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
       })
+    )
 
-      act(() => {
-        result.current.disconnect()
-      })
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
 
+    act(() => {
+      result.current.disconnect()
+    })
+
+    await waitFor(() => {
+      expect(mockSocket.disconnect).toHaveBeenCalled()
       expect(result.current.connectionState).toBe('disconnected')
-      expect(mockSocket.disconnect).toHaveBeenCalled()
     })
   })
 
-  describe('cleanup on unmount', () => {
-    it('disconnects socket on unmount', async () => {
-      const { unmount } = renderHook(() => useMediasoup(defaultOptions))
-
-      await vi.waitFor(() => {
-        expect(mockSocket.on).toHaveBeenCalled()
+  it('should disconnect and cleanup on unmount', async () => {
+    const { result, unmount } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
       })
+    )
 
-      unmount()
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
 
+    unmount()
+
+    await waitFor(() => {
       expect(mockSocket.disconnect).toHaveBeenCalled()
     })
   })
 
-  describe('return values', () => {
-    it('returns expected shape', () => {
-      const { result } = renderHook(() => useMediasoup(defaultOptions))
+  it('should return all expected values including reconnectingPeers', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
 
-      expect(result.current).toEqual(
+    expect(result.current).toHaveProperty('connectionState')
+    expect(result.current).toHaveProperty('localStream')
+    expect(result.current).toHaveProperty('remoteStreams')
+    expect(result.current).toHaveProperty('reconnectingPeers')
+    expect(result.current).toHaveProperty('audioMuted')
+    expect(result.current).toHaveProperty('videoOff')
+    expect(result.current).toHaveProperty('toggleMute')
+    expect(result.current).toHaveProperty('toggleVideo')
+    expect(result.current).toHaveProperty('disconnect')
+
+    expect(result.current.reconnectingPeers).toBeInstanceOf(Set)
+    expect(result.current.reconnectingPeers.size).toBe(0)
+  })
+
+  // ────────────────────────────────────────────────────────────────────
+  // New reconnection tests
+  // ────────────────────────────────────────────────────────────────────
+
+  it('should set reconnecting state on socket disconnect', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
+
+    // Trigger connect first to establish connection
+    const connectHandler = getSocketHandler('connect')
+    if (connectHandler) {
+      await act(async () => {
+        await connectHandler()
+      })
+    }
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connected')
+    })
+
+    // Now trigger disconnect
+    const disconnectHandler = getSocketHandler('disconnect')
+    expect(disconnectHandler).toBeDefined()
+
+    act(() => {
+      disconnectHandler!()
+    })
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('reconnecting')
+    })
+  })
+
+  it('should add peer to reconnectingPeers on peerReconnecting event', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
+
+    const peerReconnectingHandler = getSocketHandler('peerReconnecting')
+    expect(peerReconnectingHandler).toBeDefined()
+
+    act(() => {
+      peerReconnectingHandler!({ peerId: 'peer-1', displayName: 'Bob' })
+    })
+
+    await waitFor(() => {
+      expect(result.current.reconnectingPeers.has('peer-1')).toBe(true)
+      expect(result.current.reconnectingPeers.size).toBe(1)
+    })
+  })
+
+  it('should remove peer from reconnectingPeers on peerReconnected event', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
+
+    const peerReconnectingHandler = getSocketHandler('peerReconnecting')
+    const peerReconnectedHandler = getSocketHandler('peerReconnected')
+    expect(peerReconnectingHandler).toBeDefined()
+    expect(peerReconnectedHandler).toBeDefined()
+
+    // Add peer to reconnecting set
+    act(() => {
+      peerReconnectingHandler!({ peerId: 'peer-1', displayName: 'Bob' })
+    })
+
+    await waitFor(() => {
+      expect(result.current.reconnectingPeers.has('peer-1')).toBe(true)
+    })
+
+    // Remove peer from reconnecting set
+    act(() => {
+      peerReconnectedHandler!({ peerId: 'peer-1', displayName: 'Bob' })
+    })
+
+    await waitFor(() => {
+      expect(result.current.reconnectingPeers.has('peer-1')).toBe(false)
+      expect(result.current.reconnectingPeers.size).toBe(0)
+    })
+  })
+
+  it('should remove peer from reconnectingPeers on peerLeft event', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
+
+    const peerReconnectingHandler = getSocketHandler('peerReconnecting')
+    const peerLeftHandler = getSocketHandler('peerLeft')
+    expect(peerReconnectingHandler).toBeDefined()
+    expect(peerLeftHandler).toBeDefined()
+
+    // Add peer to reconnecting set
+    act(() => {
+      peerReconnectingHandler!({ peerId: 'peer-1', displayName: 'Bob' })
+    })
+
+    await waitFor(() => {
+      expect(result.current.reconnectingPeers.has('peer-1')).toBe(true)
+    })
+
+    // Peer leaves
+    act(() => {
+      peerLeftHandler!({ peerId: 'peer-1' })
+    })
+
+    await waitFor(() => {
+      expect(result.current.reconnectingPeers.has('peer-1')).toBe(false)
+      expect(result.current.reconnectingPeers.size).toBe(0)
+    })
+  })
+
+  it('should handle transportFailure event without crashing', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
+
+    const transportFailureHandler = getSocketHandler('transportFailure')
+    expect(transportFailureHandler).toBeDefined()
+
+    // Should not throw
+    expect(() => {
+      act(() => {
+        transportFailureHandler!({ direction: 'send', reason: 'Network error' })
+      })
+    }).not.toThrow()
+  })
+
+  it('should not set error state on connect_error during reconnection', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
+
+    // Trigger connect first to establish connection and get stablePeerId
+    const connectHandler = getSocketHandler('connect')
+    if (connectHandler) {
+      await act(async () => {
+        await connectHandler()
+      })
+    }
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connected')
+    })
+
+    // Trigger disconnect to enter reconnecting state
+    const disconnectHandler = getSocketHandler('disconnect')
+    act(() => {
+      disconnectHandler!()
+    })
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('reconnecting')
+    })
+
+    // Now trigger connect_error - should NOT change to error state
+    const connectErrorHandler = getSocketHandler('connect_error')
+    act(() => {
+      connectErrorHandler!(new Error('Connection failed'))
+    })
+
+    // Wait a bit and verify state is still reconnecting
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(result.current.connectionState).toBe('reconnecting')
+    expect(result.current.connectionState).not.toBe('error')
+  })
+
+  it('should have Socket.IO reconnection config set correctly', async () => {
+    const { io } = await import('socket.io-client')
+
+    renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(io).toHaveBeenCalledWith(
+        'http://localhost:3001',
         expect.objectContaining({
-          connectionState: expect.any(String),
-          localStream: null,
-          remoteStreams: expect.any(Map),
-          audioMuted: false,
-          videoOff: false,
-          toggleMute: expect.any(Function),
-          toggleVideo: expect.any(Function),
-          disconnect: expect.any(Function),
+          transports: ['websocket'],
+          reconnection: true,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
         })
       )
+    })
+  })
+
+  it('should handle multiple peers reconnecting simultaneously', async () => {
+    const { result } = renderHook(() =>
+      useMediasoup({
+        sfuUrl: 'http://localhost:3001',
+        roomId: 'test-room',
+        displayName: 'Alice',
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(result.current.connectionState).toBe('connecting')
+    })
+
+    const peerReconnectingHandler = getSocketHandler('peerReconnecting')
+    expect(peerReconnectingHandler).toBeDefined()
+
+    // Multiple peers start reconnecting
+    act(() => {
+      peerReconnectingHandler!({ peerId: 'peer-1', displayName: 'Bob' })
+      peerReconnectingHandler!({ peerId: 'peer-2', displayName: 'Charlie' })
+      peerReconnectingHandler!({ peerId: 'peer-3', displayName: 'Diana' })
+    })
+
+    await waitFor(() => {
+      expect(result.current.reconnectingPeers.size).toBe(3)
+      expect(result.current.reconnectingPeers.has('peer-1')).toBe(true)
+      expect(result.current.reconnectingPeers.has('peer-2')).toBe(true)
+      expect(result.current.reconnectingPeers.has('peer-3')).toBe(true)
+    })
+
+    // One peer reconnects
+    const peerReconnectedHandler = getSocketHandler('peerReconnected')
+    act(() => {
+      peerReconnectedHandler!({ peerId: 'peer-2', displayName: 'Charlie' })
+    })
+
+    await waitFor(() => {
+      expect(result.current.reconnectingPeers.size).toBe(2)
+      expect(result.current.reconnectingPeers.has('peer-1')).toBe(true)
+      expect(result.current.reconnectingPeers.has('peer-2')).toBe(false)
+      expect(result.current.reconnectingPeers.has('peer-3')).toBe(true)
     })
   })
 })

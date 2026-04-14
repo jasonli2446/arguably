@@ -27,6 +27,9 @@ let getOrCreateRoom: any
 let addPeerToRoom: any
 let removePeerFromRoom: any
 let getRoom: any
+let deleteRoom: any
+let getRoomCount: any
+let getAllRoomStats: any
 
 beforeEach(async () => {
   vi.clearAllMocks()
@@ -51,12 +54,17 @@ beforeEach(async () => {
   addPeerToRoom = mod.addPeerToRoom
   removePeerFromRoom = mod.removePeerFromRoom
   getRoom = mod.getRoom
+  deleteRoom = mod.deleteRoom
+  getRoomCount = mod.getRoomCount
+  getAllRoomStats = mod.getAllRoomStats
 })
 
 function makePeer(id: string, displayName = 'TestUser') {
   return {
     id,
+    stablePeerId: `stable-${id}`,
     displayName,
+    state: 'connected' as const,
     transports: new Map(),
     producers: new Map(),
     consumers: new Map(),
@@ -114,7 +122,7 @@ describe('removePeerFromRoom', () => {
     const room = await getOrCreateRoom('room-1')
     const peer = makePeer('peer-1')
     const mockTransport = { close: vi.fn() }
-    peer.transports.set('t1', mockTransport as any)
+    peer.transports.set('t1', { transport: mockTransport, direction: 'send' } as any)
     addPeerToRoom(room, peer)
 
     const removed = removePeerFromRoom(room, 'peer-1')
@@ -150,5 +158,53 @@ describe('getRoom', () => {
     await getOrCreateRoom('room-x')
     expect(getRoom('room-x')).toBeDefined()
     expect(getRoom('room-x')!.id).toBe('room-x')
+  })
+})
+
+describe('deleteRoom', () => {
+  it('closes router and removes room', async () => {
+    await getOrCreateRoom('room-1')
+    expect(getRoom('room-1')).toBeDefined()
+
+    deleteRoom('room-1')
+    expect(mockRouter.close).toHaveBeenCalled()
+    expect(getRoom('room-1')).toBeUndefined()
+  })
+
+  it('does nothing for nonexistent room', () => {
+    // Should not throw
+    deleteRoom('nonexistent')
+  })
+})
+
+describe('getRoomCount', () => {
+  it('returns 0 when no rooms exist', () => {
+    expect(getRoomCount()).toBe(0)
+  })
+
+  it('returns correct count', async () => {
+    await getOrCreateRoom('room-1')
+    await getOrCreateRoom('room-2')
+    expect(getRoomCount()).toBe(2)
+  })
+})
+
+describe('getAllRoomStats', () => {
+  it('returns empty array when no rooms', () => {
+    expect(getAllRoomStats()).toEqual([])
+  })
+
+  it('returns room stats with peer counts', async () => {
+    const room1 = await getOrCreateRoom('room-1')
+    addPeerToRoom(room1, makePeer('p1'))
+    addPeerToRoom(room1, makePeer('p2'))
+
+    const room2 = await getOrCreateRoom('room-2')
+    addPeerToRoom(room2, makePeer('p3'))
+
+    const stats = getAllRoomStats()
+    expect(stats).toHaveLength(2)
+    expect(stats).toContainEqual({ roomId: 'room-1', peerCount: 2 })
+    expect(stats).toContainEqual({ roomId: 'room-2', peerCount: 1 })
   })
 })
