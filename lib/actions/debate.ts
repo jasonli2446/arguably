@@ -2,6 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
+import { SessionRole, SessionType } from "@/lib/generated/prisma"
+import { doPromoteFromQueue } from "@/lib/actions/queue"
 
 async function requireModerator(sessionId: string) {
   const supabase = await createClient()
@@ -46,8 +48,44 @@ export async function startDebate(
   debaters: { userId: string; displayName: string }[],
   turnLength: number
 ) {
-  await requireModerator(sessionId)
-  if (debaters.length !== 2) throw new Error("Exactly 2 debaters required")
+  const { session } = await requireModerator(sessionId)
+
+  if (session.type === SessionType.EXPERT_VS_CROWD) {
+    // Expert vs Crowd: accept 1 debater (expert), auto-promote first queue member
+    if (debaters.length !== 1) throw new Error("Expert vs. Crowd requires exactly 1 expert")
+
+    return prisma.$transaction(async (tx) => {
+      // Pop first queue member as challenger
+      const challenger = await doPromoteFromQueue(tx, sessionId)
+      if (!challenger) throw new Error("No one in the queue to challenge the expert")
+
+      const debaterOrder = [debaters[0], challenger]
+      const now = Date.now()
+      await tx.debateState.upsert({
+        where: { session_id: sessionId },
+        create: {
+          session_id: sessionId,
+          debater_order: debaterOrder,
+          current_index: 0,
+          turn_length: turnLength,
+          turn_ends_at: now + turnLength * 1000,
+          is_paused: false,
+          paused_time_remaining: turnLength,
+        },
+        update: {
+          debater_order: debaterOrder,
+          current_index: 0,
+          turn_length: turnLength,
+          turn_ends_at: now + turnLength * 1000,
+          is_paused: false,
+          paused_time_remaining: turnLength,
+        },
+      })
+    })
+  }
+
+  // All other formats: require at least 2 debaters
+  if (debaters.length < 2) throw new Error("At least 2 debaters required")
 
   const now = Date.now()
   await prisma.debateState.upsert({
@@ -73,18 +111,77 @@ export async function startDebate(
 }
 
 export async function advanceTurn(sessionId: string) {
-  await requireModerator(sessionId)
+  const { session } = await requireModerator(sessionId)
 
   const state = await prisma.debateState.findUnique({
     where: { session_id: sessionId },
   })
   if (!state) throw new Error("No active debate")
 
+  const order = state.debater_order as { userId: string; displayName: string }[]
+
+  if (session.type === SessionType.EXPERT_VS_CROWD && state.current_index === 1) {
+    // Challenger just finished — rotate challenger from queue
+    return prisma.$transaction(async (tx) => {
+      const oldChallenger = order[1]
+
+      // Demote old challenger back to AUDIENCE
+      if (oldChallenger) {
+        await tx.participatesIn.update({
+          where: {
+            user_id_session_id: {
+              user_id: oldChallenger.userId,
+              session_id: sessionId,
+            },
+          },
+          data: { session_role: SessionRole.AUDIENCE },
+        })
+      }
+
+      // Promote next from queue
+      const newChallenger = await doPromoteFromQueue(tx, sessionId)
+
+      if (!newChallenger) {
+        // No one in queue — pause debate
+        const remaining = state.turn_ends_at
+          ? Math.max(0, (state.turn_ends_at - Date.now()) / 1000)
+          : state.turn_length
+        await tx.debateState.update({
+          where: { session_id: sessionId },
+          data: {
+            // Keep expert at index 0, remove old challenger
+            debater_order: [order[0]],
+            current_index: 0,
+            is_paused: true,
+            turn_ends_at: null,
+            paused_time_remaining: remaining,
+          },
+        })
+        return
+      }
+
+      // doPromoteFromQueue appends to debater_order, but we need to replace index 1
+      // So we manually set the order to [expert, newChallenger]
+      const now = Date.now()
+      await tx.debateState.update({
+        where: { session_id: sessionId },
+        data: {
+          debater_order: [order[0], newChallenger],
+          current_index: 0,
+          turn_ends_at: now + state.turn_length * 1000,
+          is_paused: false,
+          paused_time_remaining: state.turn_length,
+        },
+      })
+    })
+  }
+
+  // Standard turn advancement for all formats
   const now = Date.now()
   await prisma.debateState.update({
     where: { session_id: sessionId },
     data: {
-      current_index: (state.current_index + 1) % 2,
+      current_index: (state.current_index + 1) % order.length,
       turn_ends_at: now + state.turn_length * 1000,
       is_paused: false,
       paused_time_remaining: state.turn_length,
@@ -105,8 +202,73 @@ export async function advanceTurnIfExpired(sessionId: string) {
   if (!state || state.is_paused || !state.turn_ends_at) return
   if (Date.now() < state.turn_ends_at - 1000) return
 
+  const order = state.debater_order as { userId: string; displayName: string }[]
+
+  // Check if this is Expert vs Crowd and challenger's turn ended
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { type: true },
+  })
+
+  if (session?.type === SessionType.EXPERT_VS_CROWD && state.current_index === 1) {
+    // Challenger turn expired — rotate via transaction
+    return prisma.$transaction(async (tx) => {
+      // Atomic guard: only proceed if state hasn't changed
+      const current = await tx.debateState.findUnique({
+        where: { session_id: sessionId },
+      })
+      if (
+        !current ||
+        current.current_index !== state.current_index ||
+        current.is_paused
+      ) {
+        return // Already advanced by someone else
+      }
+
+      const oldChallenger = order[1]
+      if (oldChallenger) {
+        await tx.participatesIn.update({
+          where: {
+            user_id_session_id: {
+              user_id: oldChallenger.userId,
+              session_id: sessionId,
+            },
+          },
+          data: { session_role: SessionRole.AUDIENCE },
+        })
+      }
+
+      const newChallenger = await doPromoteFromQueue(tx, sessionId)
+
+      if (!newChallenger) {
+        await tx.debateState.update({
+          where: { session_id: sessionId },
+          data: {
+            debater_order: [order[0]],
+            current_index: 0,
+            is_paused: true,
+            turn_ends_at: null,
+            paused_time_remaining: state.turn_length,
+          },
+        })
+        return
+      }
+
+      const now = Date.now()
+      await tx.debateState.update({
+        where: { session_id: sessionId },
+        data: {
+          debater_order: [order[0], newChallenger],
+          current_index: 0,
+          turn_ends_at: now + state.turn_length * 1000,
+          paused_time_remaining: state.turn_length,
+        },
+      })
+    })
+  }
+
+  // Standard auto-advance for all other formats
   const now = Date.now()
-  // Atomic guard: only advance if current_index hasn't changed (prevents double-advance)
   await prisma.debateState.updateMany({
     where: {
       session_id: sessionId,
@@ -114,7 +276,7 @@ export async function advanceTurnIfExpired(sessionId: string) {
       is_paused: false,
     },
     data: {
-      current_index: (state.current_index + 1) % 2,
+      current_index: (state.current_index + 1) % order.length,
       turn_ends_at: now + state.turn_length * 1000,
       paused_time_remaining: state.turn_length,
     },

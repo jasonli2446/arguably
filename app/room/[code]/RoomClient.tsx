@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   Users,
@@ -18,16 +18,23 @@ import {
   VideoOff,
   Settings,
   Loader2,
-  Swords
+  Swords,
+  Hand,
+  ArrowUp,
+  ThumbsDown,
+  Crown,
 } from 'lucide-react'
 import { useMediasoup } from '@/hooks/useMediasoup'
 import { useDebateChannel } from '@/hooks/useDebateChannel'
+import { useQueueChannel } from '@/hooks/useQueueChannel'
+import { useKickVoteChannel } from '@/hooks/useKickVoteChannel'
 import { createClient } from '@/lib/supabase/client'
 import VideoPanel from '@/components/VideoPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { userStub, getInitials, formatTime } from '@/lib/utils'
 import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater, kickParticipant, assignModerator } from '@/lib/actions/session'
+import { promoteFromQueue } from '@/lib/actions/queue'
 import { useRouter } from 'next/navigation'
 import { SessionRole, SessionStatus, SessionType } from '@/lib/generated/prisma'
 
@@ -42,6 +49,7 @@ interface SessionData {
   debaterCapacityOpponent: number | null
   debaterCapacityPanel: number | null
   audienceCapacity: number
+  kickThreshold: number
   host: { id: string; username: string; realname: string | null }
   moderator: { id: string; username: string; realname: string | null } | null
   participatesIns: {
@@ -92,6 +100,27 @@ export default function RoomClient({
   const debate = useDebateChannel({
     sessionId: session.id,
     userId: currentUserId,
+  })
+
+  const queueChannel = useQueueChannel({
+    sessionId: session.id,
+    userId: currentUserId,
+  })
+
+  const isAudience = currentRole === SessionRole.AUDIENCE
+  const isExpertVsCrowd = session.type === SessionType.EXPERT_VS_CROWD
+
+  // Compute debater IDs for kick-vote tracking (exclude host)
+  const debaterIdsForVote = useMemo(() => {
+    return debate.debaters
+      .filter((d) => d.userId !== session.host.id)
+      .map((d) => d.userId)
+  }, [debate.debaters, session.host.id])
+
+  const kickVoteChannel = useKickVoteChannel({
+    sessionId: session.id,
+    userId: currentUserId,
+    debaterIds: debaterIdsForVote,
   })
 
   // Refresh page when participants change (via Supabase Realtime)
@@ -205,6 +234,9 @@ export default function RoomClient({
   async function handleLeave() {
     disconnectSfu()
     try {
+      if (queueChannel.isInQueue) {
+        await queueChannel.leaveQueue()
+      }
       await leaveSession(session.id)
       router.push('/browse')
     } catch (err) {
@@ -239,15 +271,17 @@ export default function RoomClient({
 
   async function handleStartSession() {
     try {
-      await updateSessionStatus(session.id, 'LIVE')
-
       // Build debater list from participants with HOST or DEBATER role
       const debaterList = debaters.map((p) => ({
         userId: p.user.id,
         displayName: p.user.realname || p.user.username,
       }))
 
-      if (debaterList.length >= 2) {
+      if (isExpertVsCrowd) {
+        // Expert vs Crowd: pass only the expert (host), backend auto-promotes from queue
+        const expert = debaterList.find((d) => d.userId === session.host.id) ?? debaterList[0]
+        await debate.startDebate([expert], session.turnLength)
+      } else if (debaterList.length >= 2) {
         await debate.startDebate(debaterList, session.turnLength)
       }
 
@@ -314,8 +348,9 @@ export default function RoomClient({
   }
 
   // Check if debate can start
-  const canStartDebate =
-    session.type === SessionType.ONE_ON_ONE
+  const canStartDebate = isExpertVsCrowd
+    ? debaters.length >= 1 && queueChannel.queue.length >= 1
+    : session.type === SessionType.ONE_ON_ONE
       ? debaters.length === 2
       : debaters.length >= 2
 
@@ -428,38 +463,95 @@ export default function RoomClient({
                     ) : (
                       <div className="flex flex-col space-y-4">
                         {/* Debater display */}
-                        {isDebateLive && debate.debaters.length === 2 ? (
+                        {isDebateLive && debate.debaters.length >= 2 ? (
                           <div className="flex items-center justify-center gap-6">
                             {debate.debaters.map((d, i) => {
                               const isSpeaking = debate.currentSpeaker?.userId === d.userId
+                              const isHostDebater = d.userId === session.host.id
+                              const voteState = kickVoteChannel.voteStates[d.userId]
+                              const canVoteToKick = isAudience && !isHostDebater
                               return (
                                 <div
                                   key={d.userId}
-                                  className={`flex items-center space-x-3 p-3 border-2 transition-all ${
+                                  className={`flex flex-col p-3 border-2 transition-all ${
                                     isSpeaking
                                       ? 'border-yellow-400 bg-yellow-400/10 shadow-[0_0_15px_rgba(250,204,21,0.3)]'
                                       : 'border-white/20 opacity-60'
                                   }`}
                                 >
-                                  <div
-                                    className={`w-14 h-14 border-2 border-black flex items-center justify-center text-white font-bold text-lg ${
-                                      i === 0
-                                        ? 'bg-gradient-to-br from-red-600 to-red-800'
-                                        : 'bg-gradient-to-br from-blue-600 to-blue-800'
-                                    }`}
-                                  >
-                                    {getInitials(d.displayName)}
+                                  <div className="flex items-center space-x-3">
+                                    <div
+                                      className={`w-14 h-14 border-2 border-black flex items-center justify-center text-white font-bold text-lg ${
+                                        i === 0
+                                          ? 'bg-gradient-to-br from-red-600 to-red-800'
+                                          : 'bg-gradient-to-br from-blue-600 to-blue-800'
+                                      }`}
+                                    >
+                                      {getInitials(d.displayName)}
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <h3 className="text-lg font-bold debate-title text-white">
+                                          {d.displayName}
+                                        </h3>
+                                        {isExpertVsCrowd && i === 0 && (
+                                          <span className="debate-badge bg-purple-600 text-white text-xs flex items-center gap-1">
+                                            <Crown className="w-3 h-3" /> EXPERT
+                                          </span>
+                                        )}
+                                        {isExpertVsCrowd && i === 1 && (
+                                          <span className="debate-badge bg-orange-600 text-white text-xs">
+                                            CHALLENGER
+                                          </span>
+                                        )}
+                                      </div>
+                                      {isSpeaking && (
+                                        <span className="debate-badge bg-yellow-400 text-black text-xs">
+                                          SPEAKING
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div>
-                                    <h3 className="text-lg font-bold debate-title text-white">
-                                      {d.displayName}
-                                    </h3>
-                                    {isSpeaking && (
-                                      <span className="debate-badge bg-yellow-400 text-black text-xs">
-                                        SPEAKING
-                                      </span>
-                                    )}
-                                  </div>
+                                  {/* Kick vote UI */}
+                                  {canVoteToKick && voteState && (
+                                    <div className="mt-2 pt-2 border-t border-white/10">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-xs debate-mono text-gray-400">
+                                          {voteState.voteCount} / {voteState.requiredVotes} votes to kick
+                                        </span>
+                                      </div>
+                                      <div className="w-full bg-gray-700 h-1.5 mb-2">
+                                        <div
+                                          className="bg-red-500 h-1.5 transition-all"
+                                          style={{
+                                            width: `${Math.min(100, voteState.requiredVotes > 0 ? (voteState.voteCount / voteState.requiredVotes) * 100 : 0)}%`,
+                                          }}
+                                        />
+                                      </div>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className={`debate-button w-full text-xs ${
+                                          voteState.userHasVoted ? 'border-red-500 text-red-400' : ''
+                                        }`}
+                                        onClick={async () => {
+                                          try {
+                                            if (voteState.userHasVoted) {
+                                              await kickVoteChannel.removeVote(d.userId)
+                                            } else {
+                                              await kickVoteChannel.castVote(d.userId)
+                                            }
+                                            router.refresh()
+                                          } catch (err) {
+                                            console.error('Vote failed:', err)
+                                          }
+                                        }}
+                                      >
+                                        <ThumbsDown className="w-3 h-3 mr-1" />
+                                        {voteState.userHasVoted ? 'REMOVE VOTE' : 'VOTE TO KICK'}
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               )
                             })}
@@ -562,7 +654,121 @@ export default function RoomClient({
                 </Card>
               </div>
 
-              {/* Audience Queue */}
+              {/* Speaker Queue */}
+              <div>
+                <Card className="debate-card border-2">
+                  <CardHeader className="border-b-2 border-white/20">
+                    <CardTitle className="debate-title flex items-center justify-between text-white">
+                      <div className="flex items-center">
+                        <Hand className="w-4 h-4 mr-2" />
+                        SPEAKER QUEUE ({queueChannel.queue.length})
+                      </div>
+                      {queueChannel.queue.length > 0 && isExpertVsCrowd && (
+                        <span className="text-xs debate-mono text-orange-400 font-normal">
+                          NEXT UP: {queueChannel.queue[0]?.displayName}
+                        </span>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    {/* Queue actions for audience members */}
+                    {isAudience && (
+                      <div className="mb-4">
+                        {queueChannel.isInQueue ? (
+                          <div className="space-y-2">
+                            <div className="text-center p-2 border-2 border-yellow-500/30 bg-yellow-500/5">
+                              <p className="text-yellow-400 debate-mono text-sm font-bold">
+                                You are #{queueChannel.myPosition} in queue
+                              </p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              className="debate-button w-full text-xs"
+                              onClick={async () => {
+                                try {
+                                  await queueChannel.leaveQueue()
+                                } catch (err) {
+                                  console.error('Failed to leave queue:', err)
+                                }
+                              }}
+                            >
+                              LEAVE QUEUE
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                            onClick={async () => {
+                              try {
+                                await queueChannel.joinQueue()
+                              } catch (err) {
+                                console.error('Failed to join queue:', err)
+                              }
+                            }}
+                          >
+                            <Hand className="w-4 h-4 mr-2" />
+                            {isExpertVsCrowd ? 'JOIN SPEAKER QUEUE' : 'JOIN QUEUE'}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Moderator promote button */}
+                    {isModeratorOrCreator && queueChannel.queue.length > 0 && (
+                      <div className="mb-4">
+                        <Button
+                          variant="outline"
+                          className="debate-button w-full text-xs"
+                          onClick={async () => {
+                            try {
+                              await promoteFromQueue(session.id)
+                              router.refresh()
+                            } catch (err) {
+                              console.error('Failed to promote:', err)
+                            }
+                          }}
+                        >
+                          <ArrowUp className="w-3 h-3 mr-1" />
+                          PROMOTE NEXT: {queueChannel.queue[0]?.displayName}
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Queue list */}
+                    {queueChannel.queue.length === 0 ? (
+                      <p className="text-gray-500 debate-mono text-sm text-center py-2">Queue is empty</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {queueChannel.queue.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className={`flex items-center gap-3 p-2 border-2 ${
+                              entry.userId === currentUserId
+                                ? 'border-yellow-500/50 bg-yellow-500/5'
+                                : 'border-white/10'
+                            }`}
+                          >
+                            <span className="text-xs debate-mono text-gray-500 w-6 text-right">
+                              #{entry.rank}
+                            </span>
+                            <div className="w-8 h-8 bg-gray-600 text-white font-bold text-xs flex items-center justify-center border border-black">
+                              {getInitials(entry.displayName)}
+                            </div>
+                            <span className="text-sm debate-mono text-white truncate flex-1">
+                              {entry.displayName}
+                            </span>
+                            {entry.rank === 1 && isExpertVsCrowd && (
+                              <span className="debate-badge bg-orange-600 text-white text-[10px]">NEXT</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Audience (watching, not in queue) */}
               <div>
                 <Card className="debate-card border-2">
                   <CardHeader className="border-b-2 border-white/20">
@@ -572,7 +778,8 @@ export default function RoomClient({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-4">
-                    {canUpgradeToDebater && (
+                    {/* Direct debater upgrade (non-Expert vs Crowd, non-queue path) */}
+                    {canUpgradeToDebater && !isExpertVsCrowd && (
                       <div className="mb-4">
                         {session.type === SessionType.PANEL ? (
                           <Button
@@ -649,23 +856,34 @@ export default function RoomClient({
                       <p className="text-gray-500 debate-mono text-sm text-center py-4">No audience members yet</p>
                     ) : (
                       <div className="grid grid-cols-4 gap-3">
-                        {audience.map((person, index) => (
-                          <motion.div
-                            key={person.userId}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.1 }}
-                            className="text-center p-3 border-2 border-white/20 hover:border-red-600 transition-colors cursor-pointer"
-                          >
-                            <div className="w-12 h-12 bg-gray-600 text-white font-bold text-sm flex items-center justify-center mx-auto mb-2 border-2 border-black">
-                              {getInitials(displayName(person.user))}
-                            </div>
-                            <p className="text-xs debate-mono font-medium truncate text-white">
-                              {displayName(person.user)}
-                            </p>
-                            <p className="text-xs debate-mono text-gray-400">#{index + 1}</p>
-                          </motion.div>
-                        ))}
+                        {audience.map((person, index) => {
+                          const queueEntry = queueChannel.queue.find((q) => q.userId === person.userId)
+                          return (
+                            <motion.div
+                              key={person.userId}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: index * 0.05 }}
+                              className={`text-center p-3 border-2 transition-colors ${
+                                queueEntry
+                                  ? 'border-yellow-500/40 bg-yellow-500/5'
+                                  : 'border-white/20 hover:border-red-600'
+                              }`}
+                            >
+                              <div className="w-12 h-12 bg-gray-600 text-white font-bold text-sm flex items-center justify-center mx-auto mb-2 border-2 border-black">
+                                {getInitials(displayName(person.user))}
+                              </div>
+                              <p className="text-xs debate-mono font-medium truncate text-white">
+                                {displayName(person.user)}
+                              </p>
+                              {queueEntry ? (
+                                <p className="text-xs debate-mono text-yellow-400">Queue #{queueEntry.rank}</p>
+                              ) : (
+                                <p className="text-xs debate-mono text-gray-400">watching</p>
+                              )}
+                            </motion.div>
+                          )
+                        })}
                       </div>
                     )}
                   </CardContent>

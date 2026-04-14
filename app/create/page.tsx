@@ -26,6 +26,7 @@ export default function CreateRoom() {
   const [debaterCapacityOpponent, setDebaterCapacityOpponent] = useState('1')
   const [debaterCapacityPanel, setDebaterCapacityPanel] = useState('5')
   const [audienceCapacity, setAudienceCapacity] = useState('10')
+  const [kickThreshold, setKickThreshold] = useState('50')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [previewCode, setPreviewCode] = useState('ARG-····')
@@ -82,6 +83,7 @@ export default function CreateRoom() {
         debaterCapacityPanel: selectedFormat === 'panel' ? parseInt(debaterCapacityPanel) : null,
         audienceCapacity: parseInt(audienceCapacity),
         turnLength: parseInt(turnLength),
+        kickThreshold: parseInt(kickThreshold),
       })
       // createSession redirects on success, so we only reach here on error
     } catch (err) {
@@ -270,13 +272,20 @@ export default function CreateRoom() {
                 <div>
                   <label className="block text-sm font-bold debate-mono mb-2 text-white">
                     <Settings className="w-4 h-4 inline mr-2" />
-                    MODERATION
+                    KICK VOTE THRESHOLD
                   </label>
-                  <select className="debate-input w-full">
-                    <option>Auto-moderate</option>
-                    <option>Manual moderation</option>
-                    <option>No moderation</option>
+                  <select
+                    value={kickThreshold}
+                    onChange={(e) => setKickThreshold(e.target.value)}
+                    className="debate-input w-full"
+                  >
+                    <option value="25">25% of audience</option>
+                    <option value="50">50% of audience</option>
+                    <option value="75">75% of audience</option>
                   </select>
+                  <p className="text-xs debate-mono text-gray-500 mt-1">
+                    % of audience votes needed to kick a speaker
+                  </p>
                 </div>
               </div>
             </div>
