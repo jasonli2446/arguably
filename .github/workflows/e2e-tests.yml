@@ -27,6 +27,7 @@ jobs:
       - name: Run public E2E tests
         run: npx playwright test --project=public
         env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -35,6 +36,7 @@ jobs:
         if: ${{ env.TEST_USER_EMAIL != '' }}
         run: npx playwright test --project=setup --project=authenticated
         env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
