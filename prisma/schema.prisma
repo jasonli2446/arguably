@@ -140,7 +140,7 @@ model DebateState {
   turn_ends_at          Float?
   is_paused             Boolean      @default(false)
   paused_time_remaining Float        @default(0)
-  format                SessionType
+  format                SessionType  @default(ONE_ON_ONE)
   format_meta           Json?
   phase                 DebatePhase  @default(ACTIVE)
   version               Int          @default(0)
