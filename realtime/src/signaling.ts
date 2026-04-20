@@ -11,7 +11,10 @@ import type {
   GetDebateStateRequest,
 } from "./types.js";
 import { iceServers } from "./config.js";
+import { createLogger } from "./logger.js";
 import { getOrCreateRoom, addPeerToRoom, removePeerFromRoom, getRoom } from "./mediasoup/rooms.js";
+
+const log = createLogger("signaling");
 import { createWebRtcTransport, getTransportOptions } from "./mediasoup/transports.js";
 import { createProducer } from "./mediasoup/producers.js";
 import { createConsumer } from "./mediasoup/consumers.js";
@@ -83,7 +86,7 @@ function collectRoomProducers(room: ReturnType<typeof getRoom>, excludeSocketId:
 
 export function setupSignaling(io: SocketIOServer): void {
   io.on("connection", (socket: Socket) => {
-    console.log(`Socket connected [id:${socket.id}]`);
+    log.info({ socketId: socket.id }, "Socket connected");
 
     // Extract userId from auth handshake
     const authUserId = (socket.handshake.auth as Record<string, unknown>)?.userId as string | undefined;
@@ -102,7 +105,7 @@ export function setupSignaling(io: SocketIOServer): void {
           iceServers,
         });
       } catch (error) {
-        console.error("getRouterRtpCapabilities error:", error);
+        log.error({ socketId: socket.id, error: String(error) }, "getRouterRtpCapabilities error");
         callback({ success: false, error: String(error) });
       }
     });
@@ -150,7 +153,7 @@ export function setupSignaling(io: SocketIOServer): void {
 
         callback({ success: true, peers: existingPeers, stablePeerId });
       } catch (error) {
-        console.error("joinRoom error:", error);
+        log.error({ socketId: socket.id, error: String(error) }, "joinRoom error");
         callback({ success: false, error: String(error) });
       }
     });
@@ -181,7 +184,7 @@ export function setupSignaling(io: SocketIOServer): void {
         if (graceEntry) {
           clearTimeout(graceEntry.timer);
           gracePeriodTimers.delete(stablePeerId);
-          console.log(`Reconnection within grace period [stablePeerId:${stablePeerId}]`);
+          log.info({}, `Reconnection within grace period [stablePeerId:${stablePeerId}]`);
         }
 
         // Update peer with new socket ID
@@ -211,7 +214,7 @@ export function setupSignaling(io: SocketIOServer): void {
 
         callback({ success: true, peers: existingPeers });
       } catch (error) {
-        console.error("reconnect error:", error);
+        log.error({ socketId: socket.id, error: String(error) }, "reconnect error");
         callback({ success: false, error: String(error) });
       }
     });
@@ -234,7 +237,7 @@ export function setupSignaling(io: SocketIOServer): void {
         const transport = await createWebRtcTransport(room.router);
 
         transport.on("dtlsstatechange", (dtlsState: string) => {
-          console.log(`Transport [id:${transport.id}, direction:${parsed.data.direction}] dtls state: ${dtlsState}`);
+          log.info({}, `Transport [id:${transport.id}, direction:${parsed.data.direction}] dtls state: ${dtlsState}`);
 
           if (dtlsState === "closed" || dtlsState === "failed") {
             // Notify client of transport failure
@@ -263,7 +266,7 @@ export function setupSignaling(io: SocketIOServer): void {
           transportOptions: getTransportOptions(transport),
         });
       } catch (error) {
-        console.error("createWebRtcTransport error:", error);
+        log.error({ socketId: socket.id, error: String(error) }, "createWebRtcTransport error");
         callback({ success: false, error: String(error) });
       }
     });
@@ -292,7 +295,7 @@ export function setupSignaling(io: SocketIOServer): void {
 
         callback({ success: true });
       } catch (error) {
-        console.error("connectTransport error:", error);
+        log.error({ socketId: socket.id, error: String(error) }, "connectTransport error");
         callback({ success: false, error: String(error) });
       }
     });
@@ -333,7 +336,7 @@ export function setupSignaling(io: SocketIOServer): void {
           const now = Date.now();
           const lastLog = lastScoreLog.get(producer.id) || 0;
           if (now - lastLog >= SCORE_LOG_INTERVAL_MS) {
-            console.log(`Producer [id:${producer.id}, kind:${producer.kind}] score:`, score);
+            log.info({}, `Producer [id:${producer.id}, kind:${producer.kind}] score:`, score);
             lastScoreLog.set(producer.id, now);
           }
         });
@@ -348,7 +351,7 @@ export function setupSignaling(io: SocketIOServer): void {
 
         callback({ success: true, producerId: producer.id });
       } catch (error) {
-        console.error("produce error:", error);
+        log.error({ socketId: socket.id, error: String(error) }, "produce error");
         callback({ success: false, error: String(error) });
       }
     });
@@ -419,7 +422,7 @@ export function setupSignaling(io: SocketIOServer): void {
           const now = Date.now();
           const lastLog = lastScoreLog.get(consumer.id) || 0;
           if (now - lastLog >= SCORE_LOG_INTERVAL_MS) {
-            console.log(`Consumer [id:${consumer.id}, kind:${consumer.kind}] score:`, score);
+            log.info({}, `Consumer [id:${consumer.id}, kind:${consumer.kind}] score:`, score);
             lastScoreLog.set(consumer.id, now);
           }
         });
@@ -434,7 +437,7 @@ export function setupSignaling(io: SocketIOServer): void {
           displayName: producerDisplayName,
         });
       } catch (error) {
-        console.error("consume error:", error);
+        log.error({ socketId: socket.id, error: String(error) }, "consume error");
         callback({ success: false, error: String(error) });
       }
     });
@@ -460,7 +463,7 @@ export function setupSignaling(io: SocketIOServer): void {
         await consumer.resume();
         callback({ success: true });
       } catch (error) {
-        console.error("resumeConsumer error:", error);
+        log.error({ socketId: socket.id, error: String(error) }, "resumeConsumer error");
         callback({ success: false, error: String(error) });
       }
     });
@@ -493,7 +496,7 @@ export function setupSignaling(io: SocketIOServer): void {
 
         callback({ success: true });
       } catch (error) {
-        console.error("closeProducer error:", error);
+        log.error({ socketId: socket.id, error: String(error) }, "closeProducer error");
         callback({ success: false, error: String(error) });
       }
     });
@@ -513,7 +516,7 @@ export function setupSignaling(io: SocketIOServer): void {
 
         callback({ success: true, producers });
       } catch (error) {
-        console.error("getProducers error:", error);
+        log.error({ socketId: socket.id, error: String(error) }, "getProducers error");
         callback({ success: false, error: String(error) });
       }
     });
@@ -608,7 +611,7 @@ export function setupSignaling(io: SocketIOServer): void {
 
     // ── disconnect ──
     socket.on("disconnect", () => {
-      console.log(`Socket disconnected [id:${socket.id}]`);
+      log.info({}, `Socket disconnected [id:${socket.id}]`);
 
       const roomId = socketRoomMap.get(socket.id);
       const stablePeerId = socketToPeerId.get(socket.id);
@@ -650,7 +653,7 @@ export function setupSignaling(io: SocketIOServer): void {
 
       // Start grace period timer
       const timer = setTimeout(() => {
-        console.log(`Grace period expired [stablePeerId:${stablePeerId}]`);
+        log.info({}, `Grace period expired [stablePeerId:${stablePeerId}]`);
         gracePeriodTimers.delete(stablePeerId);
 
         const currentRoom = getRoom(roomId);
@@ -677,7 +680,7 @@ export function setupSignaling(io: SocketIOServer): void {
         rtpCapabilities: peerData?.rtpCapabilities || { codecs: [] },
       });
 
-      console.log(`Grace period started [stablePeerId:${stablePeerId}, duration:${RECONNECT_GRACE_MS}ms]`);
+      log.info({}, `Grace period started [stablePeerId:${stablePeerId}, duration:${RECONNECT_GRACE_MS}ms]`);
     });
   });
 }

@@ -9,6 +9,9 @@ import { getRoomCount, getAllRoomStats } from "./mediasoup/rooms.js";
 import { LISTEN_PORT } from "./config.js";
 import { createAuthMiddleware } from "./auth.js";
 import { recoverDebates } from "./debate.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("server");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,16 +29,10 @@ function getCorsOrigin(): string[] {
     return envOrigins.split(",").map((o) => o.trim());
   }
   if (isProduction) {
-    console.error(
-      "\n[FATAL] ALLOWED_ORIGINS env var is required in production.\n" +
-        "Set it to a comma-separated list of allowed origins.\n",
-    );
+    log.fatal({}, "ALLOWED_ORIGINS env var is required in production");
     process.exit(1);
   }
-  console.warn(
-    "[WARN] ALLOWED_ORIGINS not set — defaulting to localhost only. " +
-      "Set ALLOWED_ORIGINS for non-local access.",
-  );
+  log.warn({}, "ALLOWED_ORIGINS not set — defaulting to localhost only");
   return ["http://localhost:3000", "http://127.0.0.1:3000"];
 }
 
@@ -132,14 +129,11 @@ async function main(): Promise<void> {
   await recoverDebates(io);
 
   server.listen(LISTEN_PORT, "0.0.0.0", () => {
-    console.log(`\nArguably Realtime SFU running`);
-    console.log(`  HTTP + Socket.io: http://localhost:${LISTEN_PORT}`);
-    console.log(`  Test client:      http://localhost:${LISTEN_PORT}/`);
-    console.log(`  Health check:     http://localhost:${LISTEN_PORT}/health\n`);
+    log.info({ port: LISTEN_PORT }, "Arguably Realtime SFU running");
   });
 }
 
 main().catch((error) => {
-  console.error("Failed to start server:", error);
+  log.fatal({ error: String(error) }, "Failed to start server");
   process.exit(1);
 });
