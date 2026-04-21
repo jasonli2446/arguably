@@ -1,5 +1,8 @@
 import { jwtVerify } from "jose";
 import type { Socket } from "socket.io";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("auth");
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -7,18 +10,12 @@ export function createAuthMiddleware() {
   const secret = process.env.SUPABASE_JWT_SECRET;
 
   if (!secret && isProduction) {
-    console.error(
-      "\n[FATAL] SUPABASE_JWT_SECRET is required in production.\n" +
-        "Get it from your Supabase dashboard: Settings > API > JWT Secret.\n",
-    );
+    log.fatal({}, "SUPABASE_JWT_SECRET is required in production");
     process.exit(1);
   }
 
   if (!secret) {
-    console.warn(
-      "[WARN] SUPABASE_JWT_SECRET not set — Socket.IO auth disabled. " +
-        "Set it for authenticated connections.",
-    );
+    log.warn({}, "SUPABASE_JWT_SECRET not set — Socket.IO auth disabled");
     return (_socket: Socket, next: (err?: Error) => void) => {
       next();
     };

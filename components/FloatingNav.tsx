@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, Users, Settings, LogOut, Home, Plus, Compass, UserCircle, LogIn } from 'lucide-react'
+import { Menu, X, Settings, LogOut, Home, Plus, Compass, UserCircle, LogIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { User } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function FloatingNav() {
   const [isOpen, setIsOpen] = useState(false)
@@ -83,7 +84,7 @@ export default function FloatingNav() {
                 scrolled ? 'py-3 gap-3' : 'py-5'
               }`}>
               {/* Logo */}
-              <a
+              <Link
                 href="/"
                 className={`flex items-center gap-3 relative z-10 transition-all duration-700 ${
                   scrolled ? 'scale-90' : 'scale-100'
@@ -101,7 +102,7 @@ export default function FloatingNav() {
                 >
                   ARGUABLY
                 </h1>
-              </a>
+              </Link>
 
               {/* Desktop Navigation */}
               <div className="hidden md:flex items-center gap-2">

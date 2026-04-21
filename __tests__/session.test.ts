@@ -41,6 +41,10 @@ vi.mock('@/lib/prisma', () => {
     roleHistory: {
       create: vi.fn().mockResolvedValue({}),
     },
+    teamAssignment: {
+      count: vi.fn().mockResolvedValue(0),
+      upsert: vi.fn().mockResolvedValue({}),
+    },
     $transaction: vi.fn(async (callback: any) => callback(prismaMock)),
   }
 
@@ -271,12 +275,15 @@ describe('joinSessionAsDebater', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuth(MOCK_USER_ID)
+    ;(prisma.$transaction as any).mockImplementation(async (callback: any) => callback(prisma))
     ;(prisma.participatesIn.findUnique as any).mockResolvedValue(null)
     ;(prisma.participatesIn.create as any).mockResolvedValue({})
     ;(prisma.participatesIn.update as any).mockResolvedValue({})
+    ;(prisma.teamAssignment as any).count.mockResolvedValue(0)
+    ;(prisma.teamAssignment as any).upsert.mockResolvedValue({})
   })
 
-  // ONE_ON_ONE: totalCapacity = 1+1+10+1 = 13, totalDebaterCapacity = 2
+  // ONE_ON_ONE: totalCapacity = 1+1+10+1 = 13
   function mockSessionForDebater(overrides: Record<string, unknown> = {}) {
     ;(prisma.session.findUnique as any).mockResolvedValue({
       type: SessionType.ONE_ON_ONE,
@@ -286,7 +293,6 @@ describe('joinSessionAsDebater', () => {
       debater_capacity_panel: null,
       audience_capacity: 10,
       _count: { participates_ins: 0 },
-      participates_ins: [],
       ...overrides,
     })
   }
@@ -306,26 +312,23 @@ describe('joinSessionAsDebater', () => {
     await expect(joinSessionAsDebater(MOCK_SESSION_ID, false)).rejects.toThrow('Session has ended')
   })
 
-  it('throws if isProponent is true for ONE_ON_ONE', async () => {
+  it('throws if proponent side is full for ONE_ON_ONE', async () => {
     mockSessionForDebater()
-    await expect(joinSessionAsDebater(MOCK_SESSION_ID, true)).rejects.toThrow(
-      'Cannot join as proponent in this session type'
-    )
+    ;(prisma.teamAssignment as any).count.mockResolvedValue(1) // proponent capacity = 1, already full
+    await expect(joinSessionAsDebater(MOCK_SESSION_ID, true)).rejects.toThrow('Proponent side is full')
   })
 
   it('throws if isProponent is true for EXPERT_VS_CROWD', async () => {
     mockSessionForDebater({ type: SessionType.EXPERT_VS_CROWD })
     await expect(joinSessionAsDebater(MOCK_SESSION_ID, true)).rejects.toThrow(
-      'Cannot join as proponent in this session type'
+      'Cannot join as proponent in Expert vs Crowd'
     )
   })
 
-  it('throws if debater slots are full', async () => {
-    // totalDebaterCapacity = 1 + 1 = 2, so 2 existing debaters means full
-    mockSessionForDebater({
-      participates_ins: [{ user_id: 'a' }, { user_id: 'b' }],
-    })
-    await expect(joinSessionAsDebater(MOCK_SESSION_ID, false)).rejects.toThrow('Debate already has 2 debaters')
+  it('throws if opponent side is full', async () => {
+    mockSessionForDebater()
+    ;(prisma.teamAssignment as any).count.mockResolvedValue(1) // opponent capacity = 1, already full
+    await expect(joinSessionAsDebater(MOCK_SESSION_ID, false)).rejects.toThrow('Opponent side is full')
   })
 
   it('creates ParticipatesIn with DEBATER role for new user', async () => {

@@ -48,25 +48,40 @@ const STATUS_COLORS: Record<string, string> = {
 export default function BrowseClient({ sessions }: { sessions: SessionData[] }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [joiningId, setJoiningId] = useState<string | null>(null)
+  const [joinError, setJoinError] = useState<string | null>(null)
+  const [showFilters, setShowFilters] = useState(false)
+  const [typeFilter, setTypeFilter] = useState<string[]>([])
+  const [statusFilter, setStatusFilter] = useState<string[]>([])
   const router = useRouter()
 
-  const filtered = sessions.filter((s) =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filtered = sessions.filter((s) => {
+    if (!s.name.toLowerCase().includes(searchQuery.toLowerCase())) return false
+    if (typeFilter.length > 0 && !typeFilter.includes(s.type)) return false
+    if (statusFilter.length > 0 && !statusFilter.includes(s.status)) return false
+    return true
+  })
 
   const liveCount = sessions.filter((s) => s.status === 'LIVE').length
   const totalParticipants = sessions.reduce((sum, s) => sum + s._count.participatesIns, 0)
 
   async function handleJoin(session: SessionData) {
     setJoiningId(session.id)
+    setJoinError(null)
     try {
       await joinSession(session.id)
       router.push(`/room/${session.code}`)
     } catch (err) {
-      console.error('Failed to join:', err)
-      // Navigate anyway — they can still view
-      router.push(`/room/${session.code}`)
+      setJoinError(err instanceof Error ? err.message : 'Failed to join session')
+      setJoiningId(null)
     }
+  }
+
+  function toggleTypeFilter(type: string) {
+    setTypeFilter((prev) => prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type])
+  }
+
+  function toggleStatusFilter(status: string) {
+    setStatusFilter((prev) => prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status])
   }
 
   return (
@@ -108,11 +123,44 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button className="debate-button bg-white text-black border-black">
+            <Button className="debate-button bg-white text-black border-black" onClick={() => setShowFilters(!showFilters)}>
               <Filter className="w-4 h-4 mr-2" />
-              FILTER
+              FILTER {(typeFilter.length + statusFilter.length > 0) && `(${typeFilter.length + statusFilter.length})`}
             </Button>
           </motion.div>
+
+          {showFilters && (
+            <div className="mb-8 bg-gray-900 border-2 border-white/20 p-4">
+              <div className="flex flex-wrap gap-6">
+                <div>
+                  <p className="text-xs font-bold debate-mono text-gray-400 mb-2">TYPE</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(TYPE_LABELS).map(([key, label]) => (
+                      <button key={key} onClick={() => toggleTypeFilter(key)} className={`px-3 py-1 text-xs debate-mono border-2 transition-colors ${typeFilter.includes(key) ? 'bg-red-600 border-red-600 text-white' : 'border-white/20 text-gray-400 hover:border-white/40'}`}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-bold debate-mono text-gray-400 mb-2">STATUS</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.keys(STATUS_COLORS).map((status) => (
+                      <button key={status} onClick={() => toggleStatusFilter(status)} className={`px-3 py-1 text-xs debate-mono border-2 transition-colors ${statusFilter.includes(status) ? 'bg-red-600 border-red-600 text-white' : 'border-white/20 text-gray-400 hover:border-white/40'}`}>{status}</button>
+                    ))}
+                  </div>
+                </div>
+                {(typeFilter.length + statusFilter.length > 0) && (
+                  <button onClick={() => { setTypeFilter([]); setStatusFilter([]) }} className="text-xs debate-mono text-red-400 hover:text-red-300 self-end">CLEAR ALL</button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {joinError && (
+            <div className="mb-6 bg-red-600/10 border-2 border-red-600/30 p-3 flex items-center justify-between">
+              <p className="text-sm debate-mono text-red-400">{joinError}</p>
+              <button onClick={() => setJoinError(null)} className="text-red-400 hover:text-red-300 text-sm debate-mono ml-4">DISMISS</button>
+            </div>
+          )}
 
           {/* Stats Bar */}
           <motion.div

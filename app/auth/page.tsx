@@ -6,23 +6,41 @@ import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowRight, Mail, Lock, Zap, Shield, Users } from "lucide-react"
 import { ensureUserProfile } from "@/lib/actions/user"
+import { validatePassword, getPasswordStrength } from "@/lib/validation"
 
 export default function AuthPage() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
 
+  const strength = password ? getPasswordStrength(password) : null
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setPasswordErrors([])
     setLoading(true)
 
     const supabase = createClient()
 
     if (isSignUp) {
+      const validation = validatePassword(password)
+      if (!validation.valid) {
+        setPasswordErrors(validation.errors)
+        setLoading(false)
+        return
+      }
+      if (password !== confirmPassword) {
+        setPasswordErrors(["Passwords do not match"])
+        setLoading(false)
+        return
+      }
+
       const { error } = await supabase.auth.signUp({ email, password })
       if (error) {
         setError(error.message)
@@ -152,11 +170,42 @@ export default function AuthPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={6}
-                  placeholder="Min 6 characters"
+                  minLength={isSignUp ? 8 : 6}
+                  placeholder={isSignUp ? "Min 8 characters" : "Min 6 characters"}
                   className="debate-input w-full"
                 />
+                {isSignUp && password && (
+                  <div className="mt-2 flex gap-1">
+                    <div className={`h-1 flex-1 ${strength === 'weak' ? 'bg-red-500' : strength === 'fair' ? 'bg-yellow-500' : 'bg-green-500'}`} />
+                    <div className={`h-1 flex-1 ${strength === 'fair' ? 'bg-yellow-500' : strength === 'strong' ? 'bg-green-500' : 'bg-gray-700'}`} />
+                    <div className={`h-1 flex-1 ${strength === 'strong' ? 'bg-green-500' : 'bg-gray-700'}`} />
+                  </div>
+                )}
+                {passwordErrors.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {passwordErrors.map((err) => (
+                      <li key={err} className="text-xs debate-mono text-red-400">{err}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
+
+              {isSignUp && (
+                <div>
+                  <label className="block text-xs font-bold debate-mono mb-2 text-gray-300 uppercase tracking-wider">
+                    <Lock className="w-3.5 h-3.5 inline mr-2" />
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    placeholder="Re-enter password"
+                    className="debate-input w-full"
+                  />
+                </div>
+              )}
 
               {error && (
                 <motion.div
@@ -193,6 +242,8 @@ export default function AuthPage() {
                   onClick={() => {
                     setIsSignUp(!isSignUp)
                     setError(null)
+                    setPasswordErrors([])
+                    setConfirmPassword("")
                   }}
                   className="text-red-400 font-bold hover:text-red-300 debate-mono transition-colors"
                 >

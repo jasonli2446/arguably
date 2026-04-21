@@ -27,13 +27,37 @@ export default function CreateRoom() {
   const [debaterCapacityPanel, setDebaterCapacityPanel] = useState('5')
   const [audienceCapacity, setAudienceCapacity] = useState('10')
   const [kickThreshold, setKickThreshold] = useState('50')
+  const [moderation, setModeration] = useState('auto')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [previewCode, setPreviewCode] = useState('ARG-····')
+  const [previewCode, setPreviewCode] = useState(generateRoomCode)
+  const [draftRestored, setDraftRestored] = useState(false)
 
   useEffect(() => {
-    setPreviewCode(generateRoomCode())
+    const draft = localStorage.getItem('arguably-draft-room')
+    if (draft) {
+      try {
+        const p = JSON.parse(draft)
+        if (p.roomName) setRoomName(p.roomName)
+        if (p.selectedFormat) setSelectedFormat(p.selectedFormat)
+        if (p.turnLength) setTurnLength(p.turnLength)
+        if (p.debaterCapacityProponent) setDebaterCapacityProponent(p.debaterCapacityProponent)
+        if (p.debaterCapacityOpponent) setDebaterCapacityOpponent(p.debaterCapacityOpponent)
+        if (p.debaterCapacityPanel) setDebaterCapacityPanel(p.debaterCapacityPanel)
+        if (p.audienceCapacity) setAudienceCapacity(p.audienceCapacity)
+        if (p.moderation) setModeration(p.moderation)
+        setDraftRestored(true)
+      } catch {}
+    }
   }, [])
+
+  function handleSaveDraft() {
+    localStorage.setItem('arguably-draft-room', JSON.stringify({
+      roomName, selectedFormat, turnLength, debaterCapacityProponent,
+      debaterCapacityOpponent, debaterCapacityPanel, audienceCapacity, moderation,
+    }))
+    setDraftRestored(true)
+  }
 
   const debateFormats = [
     {
@@ -72,7 +96,12 @@ export default function CreateRoom() {
 
   async function handleCreateRoom() {
     setError(null)
+
+    if (!roomName.trim()) { setError("Room name is required"); return }
+    if (roomName.trim().length > 200) { setError("Room name must be 200 characters or fewer"); return }
+
     setIsSubmitting(true)
+    localStorage.removeItem('arguably-draft-room')
 
     try {
       await createSession({
@@ -311,8 +340,8 @@ export default function CreateRoom() {
               Room ID: <span className="font-bold text-white">{previewCode}</span>
             </div>
             <div className="space-x-4">
-              <Button variant="outline" className="debate-button">
-                SAVE DRAFT
+              <Button variant="outline" className="debate-button" onClick={handleSaveDraft}>
+                {draftRestored ? 'DRAFT SAVED' : 'SAVE DRAFT'}
               </Button>
               <Button
                 className="debate-button variant-debate"

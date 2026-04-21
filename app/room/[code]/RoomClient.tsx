@@ -122,6 +122,9 @@ export default function RoomClient({
     sfuUrl: process.env.NEXT_PUBLIC_SFU_URL,
     roomCode: session.code,
     userId: currentUserId,
+    onParticipantKicked: () => router.refresh(),
+    onParticipantPromoted: () => router.refresh(),
+    onParticipantMuted: () => router.refresh(),
   })
 
   const queueChannel = useQueueChannel({
@@ -392,6 +395,7 @@ export default function RoomClient({
     try {
       await kickParticipant(session.id, userId)
       toast.success('Participant removed')
+      await debate.broadcastKick(userId).catch(() => {})
       router.refresh()
     } catch (err) {
       console.error('Failed to kick participant:', err)
@@ -406,12 +410,23 @@ export default function RoomClient({
     try {
       await promoteToDebater(session.id, userId)
       toast.success('Participant promoted to debater')
+      await debate.broadcastPromote(userId).catch(() => {})
       router.refresh()
     } catch (err) {
       console.error('Failed to promote participant:', err)
       toast.error('Failed to promote participant')
     } finally {
       setIsPromoting(null)
+    }
+  }
+
+  async function handleMute(userId: string) {
+    try {
+      await debate.broadcastMute(userId)
+      toast.success('Participant muted')
+    } catch (err) {
+      console.error('Failed to mute participant:', err)
+      toast.error('Failed to mute participant')
     }
   }
 
@@ -1193,14 +1208,13 @@ export default function RoomClient({
                               )}
                             </button>
                           )}
-                          {/* Mute stub for debaters */}
+                          {/* Mute debater via SFU pauseProducer */}
                           {isModeratorOrCreator && person.userId !== currentUserId && (person.sessionRole === SessionRole.DEBATER || person.sessionRole === SessionRole.HOST) && session.status !== SessionStatus.WAITING && (
                             <button
-                              onClick={() => toast.info('Remote mute is not yet supported. Ask the participant to mute themselves.')}
+                              onClick={() => handleMute(person.userId)}
                               className="text-yellow-400 hover:text-yellow-300 text-xs opacity-60 hover:opacity-100"
-                              title="Mute participant (coming soon)"
+                              title="Mute participant"
                             >
-                              {/* TODO: Implement server-side mute via SFU pauseProducer */}
                               <MicOff className="w-3 h-3" />
                             </button>
                           )}

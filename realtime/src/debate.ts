@@ -24,6 +24,9 @@ import {
   type DbDebateState,
 } from "./db.js";
 import { getRoom } from "./mediasoup/rooms.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("debate");
 
 // ── Constants ──
 
@@ -393,13 +396,13 @@ export async function checkAuthorization(
 export async function recoverDebates(io: SocketIOServer): Promise<void> {
   try {
     const rows = await loadAllActiveDebates();
-    console.log(`[debate] Recovering ${rows.length} active debate(s)...`);
+    log.info({}, `[debate] Recovering ${rows.length} active debate(s)...`);
 
     for (const row of rows) {
       await recoverDebateFromRow(row, io);
     }
   } catch (err) {
-    console.error("[debate] Recovery failed:", err);
+    log.error({}, "[debate] Recovery failed:", err);
   }
 }
 
@@ -410,7 +413,7 @@ async function recoverDebateFromRow(
   // Look up the session code from session_id
   const sessionCode = await getSessionCodeById(row.session_id);
   if (!sessionCode) {
-    console.warn(`[debate] Cannot recover session ${row.session_id}: session not found`);
+    log.warn({}, `[debate] Cannot recover session ${row.session_id}: session not found`);
     return;
   }
 
@@ -443,13 +446,13 @@ async function recoverDebateFromRow(
   // Phase-aware recovery
   if (state.phase === "PAUSED") {
     // No timers needed, just reconstructed state
-    console.log(`[debate] Recovered paused debate for ${sessionCode}`);
+    log.info({}, `[debate] Recovered paused debate for ${sessionCode}`);
     return;
   }
 
   if (state.phase === "GRACE") {
     // Grace was interrupted, immediately advance
-    console.log(`[debate] Recovering from grace period for ${sessionCode}, advancing...`);
+    log.info({}, `[debate] Recovering from grace period for ${sessionCode}, advancing...`);
     state.turnStartedAt = now;
     await advanceTurn(sessionCode, "TIMER_EXPIRED", io);
     return;
@@ -459,7 +462,7 @@ async function recoverDebateFromRow(
     const remainingMs = row.turn_ends_at - now;
     if (remainingMs <= 0) {
       // Timer already expired during downtime, advance immediately
-      console.log(`[debate] Turn expired during downtime for ${sessionCode}, advancing...`);
+      log.info({}, `[debate] Turn expired during downtime for ${sessionCode}, advancing...`);
       state.turnStartedAt = now - state.turnLength * 1000; // pretend it started long ago
       await advanceTurn(sessionCode, "TIMER_EXPIRED", io);
     } else {
@@ -468,12 +471,12 @@ async function recoverDebateFromRow(
       state.turnStartedAt = now;
       state.pausedTimeRemaining = remainingSec;
       scheduleTimersWithDuration(state, remainingSec, io);
-      console.log(`[debate] Recovered active debate for ${sessionCode}, ${remainingSec.toFixed(1)}s remaining`);
+      log.info({}, `[debate] Recovered active debate for ${sessionCode}, ${remainingSec.toFixed(1)}s remaining`);
     }
     return;
   }
 
-  console.log(`[debate] Recovered debate for ${sessionCode} in phase ${state.phase}`);
+  log.info({}, `[debate] Recovered debate for ${sessionCode} in phase ${state.phase}`);
 }
 
 /**
@@ -591,7 +594,7 @@ function onTurnExpired(
   // Grace timer -> auto-advance
   state.graceTimer = setTimeout(() => {
     advanceTurn(state.roomCode, "TIMER_EXPIRED", io).catch((err) => {
-      console.error("[debate] Auto-advance failed:", err);
+      log.error({}, "[debate] Auto-advance failed:", err);
     });
   }, GRACE_PERIOD_MS);
 }
@@ -632,7 +635,7 @@ async function persistState(state: InternalDebateState): Promise<void> {
       version: state.version,
     });
   } catch (err) {
-    console.error("[debate] Failed to persist state:", err);
+    log.error({}, "[debate] Failed to persist state:", err);
   }
 }
 
