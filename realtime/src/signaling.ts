@@ -609,6 +609,65 @@ export function setupSignaling(io: SocketIOServer): void {
       }
     });
 
+    // ── MODERATION BROADCASTS ──
+
+    socket.on("moderatorKick", async (data: { roomCode: string; userId: string }, callback) => {
+      try {
+        const callerId = socketUserMap.get(socket.id)
+        if (!callerId) return callback({ success: false, error: "Not authenticated" })
+        const authorized = await checkAuthorization(data.roomCode, callerId)
+        if (!authorized) return callback({ success: false, error: "Not authorized" })
+        io.to(data.roomCode).emit("participantKicked", { userId: data.userId })
+        callback({ success: true })
+      } catch (error) {
+        callback({ success: false, error: String(error) })
+      }
+    })
+
+    socket.on("moderatorPromote", async (data: { roomCode: string; userId: string }, callback) => {
+      try {
+        const callerId = socketUserMap.get(socket.id)
+        if (!callerId) return callback({ success: false, error: "Not authenticated" })
+        const authorized = await checkAuthorization(data.roomCode, callerId)
+        if (!authorized) return callback({ success: false, error: "Not authorized" })
+        io.to(data.roomCode).emit("participantPromoted", { userId: data.userId })
+        callback({ success: true })
+      } catch (error) {
+        callback({ success: false, error: String(error) })
+      }
+    })
+
+    socket.on("moderatorMute", async (data: { roomCode: string; targetUserId: string }, callback) => {
+      try {
+        const callerId = socketUserMap.get(socket.id)
+        if (!callerId) return callback({ success: false, error: "Not authenticated" })
+        const authorized = await checkAuthorization(data.roomCode, callerId)
+        if (!authorized) return callback({ success: false, error: "Not authorized" })
+
+        // Find target socket by userId and pause their audio producers
+        for (const [targetSocketId, userId] of socketUserMap.entries()) {
+          if (userId !== data.targetUserId) continue
+          const targetRoomId = socketRoomMap.get(targetSocketId)
+          const room = targetRoomId ? getRoom(targetRoomId) : undefined
+          if (room) {
+            const targetPeer = room.peers.get(targetSocketId)
+            if (targetPeer) {
+              for (const [, producer] of targetPeer.producers) {
+                if (producer.kind === "audio" && !producer.closed) await producer.pause()
+              }
+            }
+          }
+          io.to(targetSocketId).emit("forceMuted", { userId: data.targetUserId })
+          break
+        }
+
+        io.to(data.roomCode).emit("participantMuted", { userId: data.targetUserId })
+        callback({ success: true })
+      } catch (error) {
+        callback({ success: false, error: String(error) })
+      }
+    })
+
     // ── disconnect ──
     socket.on("disconnect", () => {
       log.info({}, `Socket disconnected [id:${socket.id}]`);

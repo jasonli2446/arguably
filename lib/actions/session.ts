@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
-import { generateRoomCode, SessionCapacityInfo, getSessionCapacity, getTotalDebaterCapacity } from "@/lib/utils"
+import { generateRoomCode, SessionCapacityInfo, getSessionCapacity } from "@/lib/utils"
 import { redirect } from "next/navigation"
 import { Prisma, SessionRole, SessionStatus, SessionType } from "@/lib/generated/prisma"
 import { doPromoteFromQueue, cleanupUserVotes } from "@/lib/actions/queue"
@@ -216,95 +216,90 @@ export async function joinSessionAsDebater(sessionId: string, isProponent: boole
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Not authenticated")
 
-    const session = await prisma.session.findUnique({
-        where: { id: sessionId },
-        select: {
-            status: true,
-            type: true,
-            debater_capacity_proponent: true,
-            debater_capacity_opponent: true,
-            debater_capacity_panel: true,
-            audience_capacity: true,
-            _count: { select: { participates_ins: { where: { left_at: null } } } },
-            participates_ins: {
-                where: { left_at: null, session_role: { in: [SessionRole.DEBATER, SessionRole.HOST] } },
-                select: { user_id: true },
+    await prisma.$transaction(async (tx) => {
+        const session = await tx.session.findUnique({
+            where: { id: sessionId },
+            select: {
+                status: true,
+                type: true,
+                debater_capacity_proponent: true,
+                debater_capacity_opponent: true,
+                debater_capacity_panel: true,
+                audience_capacity: true,
+                _count: { select: { participates_ins: { where: { left_at: null } } } },
             },
-        },
-    })
-
-    if (!session) throw new Error("Session not found")
-    if (session.status === SessionStatus.ENDED) throw new Error("Session has ended")
-
-    const capacityInfo: SessionCapacityInfo = {
-        sessionType: session.type,
-        debaterCapacityProponent: session.debater_capacity_proponent,
-        debaterCapacityOpponent: session.debater_capacity_opponent,
-        debaterCapacityPanel: session.debater_capacity_panel,
-        audienceCapacity: session.audience_capacity,
-    }
-
-    const totalDebaterCapacity = getTotalDebaterCapacity(capacityInfo)
-    const totalCapacity = getSessionCapacity(capacityInfo)
-
-    // Regardless of session type, debater capacity is consistently calculated
-    if (isProponent) {
-        if (session.type === SessionType.EXPERT_VS_CROWD || session.type === SessionType.ONE_ON_ONE) {
-            throw new Error("Cannot join as proponent in this session type")
-        }
-
-    } else {
-        if (session.participates_ins.length >= totalDebaterCapacity) {
-            throw new Error(`Debate already has ${totalDebaterCapacity} debaters`)
-        }
-    }
-
-    // Check total session capacity
-    if (session._count.participates_ins >= totalCapacity) {
-        throw new Error("Session is full")
-    }
-
-    // Check for existing participation (re-join case)
-    const existing = await prisma.participatesIn.findUnique({
-        where: {
-            user_id_session_id: {
-                user_id: user.id,
-                session_id: sessionId,
-            },
-        },
-    })
-
-    const previousRole = existing?.session_role ?? SessionRole.AUDIENCE
-
-    if (existing) {
-        await prisma.participatesIn.update({
-            where: {
-                user_id_session_id: {
-                    user_id: user.id,
-                    session_id: sessionId,
-                },
-            },
-            data: { left_at: null, session_role: SessionRole.DEBATER },
         })
-    } else {
-        await prisma.participatesIn.create({
+
+        if (!session) throw new Error("Session not found")
+        if (session.status === SessionStatus.ENDED) throw new Error("Session has ended")
+
+        const capacityInfo: SessionCapacityInfo = {
+            sessionType: session.type,
+            debaterCapacityProponent: session.debater_capacity_proponent,
+            debaterCapacityOpponent: session.debater_capacity_opponent,
+            debaterCapacityPanel: session.debater_capacity_panel,
+            audienceCapacity: session.audience_capacity,
+        }
+
+        if (session._count.participates_ins >= getSessionCapacity(capacityInfo)) {
+            throw new Error("Session is full")
+        }
+
+        // Expert vs Crowd: only the host is the expert; others join via queue
+        if (isProponent && session.type === SessionType.EXPERT_VS_CROWD) {
+            throw new Error("Cannot join as proponent in Expert vs Crowd — the host is the expert")
+        }
+
+        // Per-side capacity check using TeamAssignment (race-condition-safe inside transaction)
+        const team = session.type === SessionType.PANEL ? "panel" : (isProponent ? "proponent" : "opponent")
+        const sideCapacity = session.type === SessionType.PANEL
+            ? (session.debater_capacity_panel ?? 0)
+            : isProponent
+                ? (session.debater_capacity_proponent ?? 0)
+                : (session.debater_capacity_opponent ?? 0)
+
+        if (sideCapacity > 0) {
+            const sideCount = await tx.teamAssignment.count({
+                where: { session_id: sessionId, team },
+            })
+            if (sideCount >= sideCapacity) {
+                const label = session.type === SessionType.PANEL ? "Panel" : isProponent ? "Proponent" : "Opponent"
+                throw new Error(`${label} side is full`)
+            }
+        }
+
+        const existing = await tx.participatesIn.findUnique({
+            where: { user_id_session_id: { user_id: user.id, session_id: sessionId } },
+        })
+        const previousRole = existing?.session_role ?? SessionRole.AUDIENCE
+
+        if (existing) {
+            await tx.participatesIn.update({
+                where: { user_id_session_id: { user_id: user.id, session_id: sessionId } },
+                data: { left_at: null, session_role: SessionRole.DEBATER },
+            })
+        } else {
+            await tx.participatesIn.create({
+                data: { user_id: user.id, session_id: sessionId, session_role: SessionRole.DEBATER },
+            })
+        }
+
+        // Record which side the debater is on
+        await tx.teamAssignment.upsert({
+            where: { session_id_user_id: { session_id: sessionId, user_id: user.id } },
+            create: { session_id: sessionId, user_id: user.id, team },
+            update: { team },
+        })
+
+        await tx.roleHistory.create({
             data: {
-                user_id: user.id,
                 session_id: sessionId,
-                session_role: SessionRole.DEBATER,
+                user_id: user.id,
+                old_role: previousRole,
+                new_role: SessionRole.DEBATER,
+                reason: "Joined as debater",
             },
         })
-    }
-
-    // Log role transition
-    await prisma.roleHistory.create({
-        data: {
-            session_id: sessionId,
-            user_id: user.id,
-            old_role: previousRole,
-            new_role: SessionRole.DEBATER,
-            reason: "Joined as debater",
-        },
     })
 }
 

@@ -5,12 +5,14 @@ import { doPromoteFromQueue, cleanupUserVotes } from "@/lib/actions/queue"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function POST(req: NextRequest) {
+  try {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
 
-  const { sessionId } = await req.json()
-  if (!sessionId) return NextResponse.json({ error: "sessionId required" }, { status: 400 })
+  const body = await req.json().catch(() => null)
+  if (!body?.sessionId) return NextResponse.json({ error: "sessionId required" }, { status: 400 })
+  const { sessionId } = body
 
   const participation = await prisma.participatesIn.findUnique({
     where: {
@@ -63,4 +65,8 @@ export async function POST(req: NextRequest) {
   })
 
   return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("leave-session error:", err)
+    return NextResponse.json({ error: "Failed to leave session" }, { status: 500 })
+  }
 }

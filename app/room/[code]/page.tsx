@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { getSessionByCode } from '@/lib/actions/session'
 import { SessionRole } from '@/lib/generated/prisma'
 import { createClient } from '@/lib/supabase/server'

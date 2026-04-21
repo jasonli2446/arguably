@@ -14,6 +14,9 @@ interface UseDebateChannelOptions {
   sfuUrl: string | undefined
   roomCode: string
   userId: string | null
+  onParticipantKicked?: (userId: string) => void
+  onParticipantPromoted?: (userId: string) => void
+  onParticipantMuted?: (userId: string) => void
 }
 
 // Socket.io emit with ack helper
@@ -33,6 +36,9 @@ export function useDebateChannel({
   sfuUrl,
   roomCode,
   userId,
+  onParticipantKicked,
+  onParticipantPromoted,
+  onParticipantMuted,
 }: UseDebateChannelOptions) {
   const [debaters, setDebaters] = useState<DebateParticipant[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -47,6 +53,12 @@ export function useDebateChannel({
 
   const socketRef = useRef<any>(null)
   const warnedRef = useRef<Set<number>>(new Set())
+  const onKickedRef = useRef(onParticipantKicked)
+  const onPromotedRef = useRef(onParticipantPromoted)
+  const onMutedRef = useRef(onParticipantMuted)
+  onKickedRef.current = onParticipantKicked
+  onPromotedRef.current = onParticipantPromoted
+  onMutedRef.current = onParticipantMuted
 
   const currentSpeaker = debaters[currentIndex] ?? null
   const isMyTurn = currentSpeaker?.userId === userId
@@ -155,6 +167,18 @@ export function useDebateChannel({
         setGraceCountdown(null)
       })
 
+      socket.on('participantKicked', (payload: { userId: string }) => {
+        onKickedRef.current?.(payload.userId)
+      })
+
+      socket.on('participantPromoted', (payload: { userId: string }) => {
+        onPromotedRef.current?.(payload.userId)
+      })
+
+      socket.on('participantMuted', (payload: { userId: string }) => {
+        onMutedRef.current?.(payload.userId)
+      })
+
       socket.on('disconnect', () => {
         if (!cancelled) {
           console.log('Debate socket disconnected')
@@ -253,6 +277,21 @@ export function useDebateChannel({
     await request(socketRef.current, 'endDebate', { roomCode })
   }, [roomCode])
 
+  const broadcastKick = useCallback(async (userId: string) => {
+    if (!socketRef.current) return
+    await request(socketRef.current, 'moderatorKick', { roomCode, userId })
+  }, [roomCode])
+
+  const broadcastPromote = useCallback(async (userId: string) => {
+    if (!socketRef.current) return
+    await request(socketRef.current, 'moderatorPromote', { roomCode, userId })
+  }, [roomCode])
+
+  const broadcastMute = useCallback(async (targetUserId: string) => {
+    if (!socketRef.current) return
+    await request(socketRef.current, 'moderatorMute', { roomCode, targetUserId })
+  }, [roomCode])
+
   return {
     currentSpeaker,
     timeRemaining,
@@ -268,5 +307,8 @@ export function useDebateChannel({
     pause,
     resume,
     endDebate,
+    broadcastKick,
+    broadcastPromote,
+    broadcastMute,
   }
 }

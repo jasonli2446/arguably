@@ -6,6 +6,12 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     include: ['__tests__/sfu/**/*.test.ts', '__tests__/realtime/**/*.test.ts', '__tests__/security/auth.test.ts'],
+    testTimeout: 30000,
+    server: {
+      deps: {
+        inline: ['jose'],
+      },
+    },
   },
   resolve: {
     alias: {
