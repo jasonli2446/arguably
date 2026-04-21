@@ -232,7 +232,7 @@ export function useDebateChannel({
         setDebateStatus('ended')
       } else if (state.isPaused) {
         setDebateStatus('paused')
-        setTimeRemaining(Math.ceil(state.pausedTimeRemaining))
+        setTimeRemaining(Math.ceil(state.pausedTimeRemaining ?? 0))
       } else if (state.debaterOrder.length > 0) {
         setDebateStatus('live')
       }
