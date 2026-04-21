@@ -3,7 +3,6 @@
 import { motion } from 'framer-motion'
 import { ArrowRight, Users, Clock, Shield, Mic, BarChart3, Zap, Play, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import Link from 'next/link'
 import FloatingNav from '@/components/FloatingNav'
 
@@ -395,7 +394,7 @@ export default function Home() {
                     READY TO <span className="text-red-400">ARGUE?</span>
                   </h2>
                   <p className="text-xl text-gray-600 dark:text-gray-300 mb-8 max-w-2xl mx-auto leading-relaxed">
-                    Stop lurking. Start a room or join one that's live.
+                    Stop lurking. Start a room or join one that&apos;s live.
                   </p>
 
                   <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type MockInstance } from 'vitest'
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
@@ -53,7 +53,7 @@ const MOCK_HOST_ID = 'host-uuid'
 const MOCK_SESSION_ID = 'session-cuid'
 
 function mockAuth(userId: string | null) {
-  ;(createClient as any).mockResolvedValue({
+  ;(createClient as MockInstance).mockResolvedValue({
     auth: {
       getUser: vi.fn().mockResolvedValue({
         data: { user: userId ? { id: userId } : null },
@@ -61,11 +61,11 @@ function mockAuth(userId: string | null) {
     },
   })
   if (!userId) {
-    ;(requireHostOrModerator as any).mockRejectedValue(new Error('Not authenticated'))
+    ;(requireHostOrModerator as MockInstance).mockRejectedValue(new Error('Not authenticated'))
   }
 }
 
-function mockSession(overrides: Record<string, any> = {}) {
+function mockSession(overrides: Record<string, unknown> = {}) {
   const session = {
     id: MOCK_SESSION_ID,
     host_id: MOCK_HOST_ID,
@@ -73,12 +73,12 @@ function mockSession(overrides: Record<string, any> = {}) {
     type: 'ONE_ON_ONE',
     ...overrides,
   }
-  ;(prisma.session.findUnique as any).mockResolvedValue(session)
+  ;(prisma.session.findUnique as MockInstance).mockResolvedValue(session)
   // If the session's host/moderator doesn't match MOCK_HOST_ID, mock rejection
   if (session.host_id !== MOCK_HOST_ID && session.moderator_id !== MOCK_HOST_ID) {
-    ;(requireHostOrModerator as any).mockRejectedValue(new Error('Not authorized'))
+    ;(requireHostOrModerator as MockInstance).mockRejectedValue(new Error('Not authorized'))
   } else {
-    ;(requireHostOrModerator as any).mockResolvedValue({
+    ;(requireHostOrModerator as MockInstance).mockResolvedValue({
       user: { id: MOCK_HOST_ID },
       session,
     })
@@ -98,13 +98,13 @@ describe('getDebateState', () => {
   })
 
   it('returns null when no state exists', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue(null)
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue(null)
     const result = await getDebateState(MOCK_SESSION_ID)
     expect(result).toBeNull()
   })
 
   it('returns shaped state when row exists', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       session_id: MOCK_SESSION_ID,
       debater_order: debaters,
       current_index: 1,
@@ -126,9 +126,9 @@ describe('startDebate', () => {
     vi.clearAllMocks()
     mockAuth(MOCK_HOST_ID)
     mockSession()
-    ;(prisma.debateState.upsert as any).mockResolvedValue({})
+    ;(prisma.debateState.upsert as MockInstance).mockResolvedValue({})
     // Mock: both debaters are active participants
-    ;(prisma.participatesIn.findMany as any).mockResolvedValue([
+    ;(prisma.participatesIn.findMany as MockInstance).mockResolvedValue([
       { user_id: 'u1' },
       { user_id: 'u2' },
     ])
@@ -140,8 +140,8 @@ describe('startDebate', () => {
   })
 
   it('throws if session not found', async () => {
-    ;(prisma.session.findUnique as any).mockResolvedValue(null)
-    ;(requireHostOrModerator as any).mockRejectedValue(new Error('Session not found'))
+    ;(prisma.session.findUnique as MockInstance).mockResolvedValue(null)
+    ;(requireHostOrModerator as MockInstance).mockRejectedValue(new Error('Session not found'))
     await expect(startDebate(MOCK_SESSION_ID, debaters, 120)).rejects.toThrow('Session not found')
   })
 
@@ -160,7 +160,7 @@ describe('startDebate', () => {
       { userId: 'u2', displayName: 'Bob' },
       { userId: 'u3', displayName: 'Charlie' },
     ]
-    ;(prisma.participatesIn.findMany as any).mockResolvedValue([
+    ;(prisma.participatesIn.findMany as MockInstance).mockResolvedValue([
       { user_id: 'u1' },
       { user_id: 'u2' },
       { user_id: 'u3' },
@@ -172,7 +172,7 @@ describe('startDebate', () => {
   it('upserts debate state with correct initial values', async () => {
     const before = Date.now()
     await startDebate(MOCK_SESSION_ID, debaters, 60)
-    const call = (prisma.debateState.upsert as any).mock.calls[0][0]
+    const call = (prisma.debateState.upsert as MockInstance).mock.calls[0][0]
     expect(call.create.current_index).toBe(0)
     expect(call.create.is_paused).toBe(false)
     expect(call.create.turn_length).toBe(60)
@@ -193,43 +193,43 @@ describe('advanceTurn', () => {
     vi.clearAllMocks()
     mockAuth(MOCK_HOST_ID)
     mockSession()
-    ;(prisma.debateState.update as any).mockResolvedValue({})
+    ;(prisma.debateState.update as MockInstance).mockResolvedValue({})
   })
 
   it('throws if no active debate', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue(null)
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue(null)
     await expect(advanceTurn(MOCK_SESSION_ID)).rejects.toThrow('No active debate')
   })
 
   it('advances current_index from 0 to 1', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       current_index: 0, turn_length: 60, is_paused: false,
       debater_order: debaters,
     })
     await advanceTurn(MOCK_SESSION_ID)
-    const update = (prisma.debateState.update as any).mock.calls[0][0]
+    const update = (prisma.debateState.update as MockInstance).mock.calls[0][0]
     expect(update.data.current_index).toBe(1)
     expect(update.data.is_paused).toBe(false)
   })
 
   it('wraps current_index from 1 back to 0', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       current_index: 1, turn_length: 60, is_paused: false,
       debater_order: debaters,
     })
     await advanceTurn(MOCK_SESSION_ID)
-    const update = (prisma.debateState.update as any).mock.calls[0][0]
+    const update = (prisma.debateState.update as MockInstance).mock.calls[0][0]
     expect(update.data.current_index).toBe(0)
   })
 
   it('sets new turn_ends_at from now + turn_length', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       current_index: 0, turn_length: 90, is_paused: false,
       debater_order: debaters,
     })
     const before = Date.now()
     await advanceTurn(MOCK_SESSION_ID)
-    const update = (prisma.debateState.update as any).mock.calls[0][0]
+    const update = (prisma.debateState.update as MockInstance).mock.calls[0][0]
     expect(update.data.turn_ends_at).toBeGreaterThanOrEqual(before + 90_000)
   })
 
@@ -239,12 +239,12 @@ describe('advanceTurn', () => {
       { userId: 'u2', displayName: 'Bob' },
       { userId: 'u3', displayName: 'Charlie' },
     ]
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       current_index: 2, turn_length: 60, is_paused: false,
       debater_order: threeDebaters,
     })
     await advanceTurn(MOCK_SESSION_ID)
-    const update = (prisma.debateState.update as any).mock.calls[0][0]
+    const update = (prisma.debateState.update as MockInstance).mock.calls[0][0]
     expect(update.data.current_index).toBe(0)
   })
 })
@@ -255,9 +255,9 @@ describe('advanceTurnIfExpired', () => {
     vi.clearAllMocks()
     mockAuth('any-user')
     mockSession({ type: 'ONE_ON_ONE' })
-    ;(prisma.debateState.updateMany as any).mockResolvedValue({ count: 1 })
+    ;(prisma.debateState.updateMany as MockInstance).mockResolvedValue({ count: 1 })
     // Mock: user is an active participant
-    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+    ;(prisma.participatesIn.findUnique as MockInstance).mockResolvedValue({
       user_id: 'any-user',
       session_id: MOCK_SESSION_ID,
       left_at: null,
@@ -271,13 +271,13 @@ describe('advanceTurnIfExpired', () => {
   })
 
   it('does nothing if no state', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue(null)
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue(null)
     await advanceTurnIfExpired(MOCK_SESSION_ID)
     expect(prisma.debateState.updateMany).not.toHaveBeenCalled()
   })
 
   it('does nothing if paused', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: true, turn_ends_at: Date.now() - 5000, current_index: 0, turn_length: 60,
       debater_order: debaters,
     })
@@ -286,7 +286,7 @@ describe('advanceTurnIfExpired', () => {
   })
 
   it('does nothing if turn has not expired yet', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: false, turn_ends_at: Date.now() + 30_000, current_index: 0, turn_length: 60,
       debater_order: debaters,
     })
@@ -295,7 +295,7 @@ describe('advanceTurnIfExpired', () => {
   })
 
   it('calls updateMany with atomic guard when turn expired', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: false, turn_ends_at: Date.now() - 2000, current_index: 0, turn_length: 60,
       debater_order: debaters,
     })
@@ -315,36 +315,36 @@ describe('pauseDebate', () => {
     vi.clearAllMocks()
     mockAuth(MOCK_HOST_ID)
     mockSession()
-    ;(prisma.debateState.update as any).mockResolvedValue({})
+    ;(prisma.debateState.update as MockInstance).mockResolvedValue({})
   })
 
   it('throws if no active debate', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue(null)
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue(null)
     await expect(pauseDebate(MOCK_SESSION_ID)).rejects.toThrow('No active debate')
   })
 
   it('throws if already paused', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({ is_paused: true, turn_ends_at: null })
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({ is_paused: true, turn_ends_at: null })
     await expect(pauseDebate(MOCK_SESSION_ID)).rejects.toThrow('Already paused')
   })
 
   it('sets is_paused to true and clears turn_ends_at', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: false, turn_ends_at: Date.now() + 30_000,
     })
     await pauseDebate(MOCK_SESSION_ID)
-    const update = (prisma.debateState.update as any).mock.calls[0][0]
+    const update = (prisma.debateState.update as MockInstance).mock.calls[0][0]
     expect(update.data.is_paused).toBe(true)
     expect(update.data.turn_ends_at).toBeNull()
   })
 
   it('saves correct paused_time_remaining', async () => {
     const turnEndsAt = Date.now() + 45_000
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: false, turn_ends_at: turnEndsAt,
     })
     await pauseDebate(MOCK_SESSION_ID)
-    const update = (prisma.debateState.update as any).mock.calls[0][0]
+    const update = (prisma.debateState.update as MockInstance).mock.calls[0][0]
     expect(update.data.paused_time_remaining).toBeGreaterThan(40)
     expect(update.data.paused_time_remaining).toBeLessThanOrEqual(45)
   })
@@ -356,21 +356,21 @@ describe('resumeDebate', () => {
     vi.clearAllMocks()
     mockAuth(MOCK_HOST_ID)
     mockSession()
-    ;(prisma.debateState.update as any).mockResolvedValue({})
+    ;(prisma.debateState.update as MockInstance).mockResolvedValue({})
   })
 
   it('throws if not paused', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({ is_paused: false })
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({ is_paused: false })
     await expect(resumeDebate(MOCK_SESSION_ID)).rejects.toThrow('Not paused')
   })
 
   it('sets is_paused to false and restores turn_ends_at', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: true, paused_time_remaining: 45,
     })
     const before = Date.now()
     await resumeDebate(MOCK_SESSION_ID)
-    const update = (prisma.debateState.update as any).mock.calls[0][0]
+    const update = (prisma.debateState.update as MockInstance).mock.calls[0][0]
     expect(update.data.is_paused).toBe(false)
     expect(update.data.turn_ends_at).toBeGreaterThanOrEqual(before + 45_000)
   })
@@ -382,7 +382,7 @@ describe('endDebate', () => {
     vi.clearAllMocks()
     mockAuth(MOCK_HOST_ID)
     mockSession()
-    ;(prisma.debateState.delete as any).mockResolvedValue({})
+    ;(prisma.debateState.delete as MockInstance).mockResolvedValue({})
   })
 
   it('throws if not authorized', async () => {
@@ -401,7 +401,7 @@ describe('endDebate', () => {
   })
 
   it('does not throw if debate state already gone', async () => {
-    ;(prisma.debateState.update as any).mockRejectedValue(new Error('not found'))
+    ;(prisma.debateState.update as MockInstance).mockRejectedValue(new Error('not found'))
     await expect(endDebate(MOCK_SESSION_ID)).resolves.not.toThrow()
   })
 })
@@ -417,7 +417,7 @@ describe('getDebateState — security', () => {
 
   it('returns state when authenticated', async () => {
     mockAuth('any-user')
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       session_id: MOCK_SESSION_ID,
       debater_order: debaters,
       current_index: 0,
@@ -438,8 +438,8 @@ describe('startDebate — security', () => {
     vi.clearAllMocks()
     mockAuth(MOCK_HOST_ID)
     mockSession()
-    ;(prisma.debateState.upsert as any).mockResolvedValue({})
-    ;(prisma.participatesIn.findMany as any).mockResolvedValue([
+    ;(prisma.debateState.upsert as MockInstance).mockResolvedValue({})
+    ;(prisma.participatesIn.findMany as MockInstance).mockResolvedValue([
       { user_id: 'u1' },
       { user_id: 'u2' },
     ])
@@ -466,7 +466,7 @@ describe('startDebate — security', () => {
   })
 
   it('throws if debater IDs are not active participants', async () => {
-    ;(prisma.participatesIn.findMany as any).mockResolvedValue([
+    ;(prisma.participatesIn.findMany as MockInstance).mockResolvedValue([
       { user_id: 'u1' },
     ])
     await expect(startDebate(MOCK_SESSION_ID, debaters, 120)).rejects.toThrow(
@@ -485,17 +485,17 @@ describe('advanceTurnIfExpired — security', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuth('any-user')
-    ;(prisma.debateState.updateMany as any).mockResolvedValue({ count: 1 })
+    ;(prisma.debateState.updateMany as MockInstance).mockResolvedValue({ count: 1 })
   })
 
   it('does nothing if user is not a participant', async () => {
-    ;(prisma.participatesIn.findUnique as any).mockResolvedValue(null)
+    ;(prisma.participatesIn.findUnique as MockInstance).mockResolvedValue(null)
     await advanceTurnIfExpired(MOCK_SESSION_ID)
     expect(prisma.debateState.updateMany).not.toHaveBeenCalled()
   })
 
   it('does nothing if user has left the session', async () => {
-    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+    ;(prisma.participatesIn.findUnique as MockInstance).mockResolvedValue({
       user_id: 'any-user',
       session_id: MOCK_SESSION_ID,
       left_at: new Date(),
@@ -505,17 +505,17 @@ describe('advanceTurnIfExpired — security', () => {
   })
 
   it('advances turn when user is active participant and turn expired', async () => {
-    ;(prisma.participatesIn.findUnique as any).mockResolvedValue({
+    ;(prisma.participatesIn.findUnique as MockInstance).mockResolvedValue({
       user_id: 'any-user',
       session_id: MOCK_SESSION_ID,
       left_at: null,
     })
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: false, turn_ends_at: Date.now() - 2000, current_index: 0, turn_length: 60,
       debater_order: debaters,
     })
     // advanceTurnIfExpired fetches session.type to check Expert vs Crowd
-    ;(prisma.session.findUnique as any).mockResolvedValue({ type: 'ONE_ON_ONE' })
+    ;(prisma.session.findUnique as MockInstance).mockResolvedValue({ type: 'ONE_ON_ONE' })
     await advanceTurnIfExpired(MOCK_SESSION_ID)
     expect(prisma.debateState.updateMany).toHaveBeenCalled()
   })
@@ -527,7 +527,7 @@ describe('extendTurn', () => {
     vi.clearAllMocks()
     mockAuth(MOCK_HOST_ID)
     mockSession()
-    ;(prisma.debateState.update as any).mockResolvedValue({})
+    ;(prisma.debateState.update as MockInstance).mockResolvedValue({})
   })
 
   it('throws if not authorized', async () => {
@@ -536,35 +536,35 @@ describe('extendTurn', () => {
   })
 
   it('throws if no active debate', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue(null)
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue(null)
     await expect(extendTurn(MOCK_SESSION_ID, 30)).rejects.toThrow('No active debate')
   })
 
   it('adds extra seconds to turn_ends_at when debate is live', async () => {
     const currentTurnEndsAt = Date.now() + 30_000
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: false,
       turn_ends_at: currentTurnEndsAt,
       paused_time_remaining: 0,
     })
     await extendTurn(MOCK_SESSION_ID, 30)
-    const update = (prisma.debateState.update as any).mock.calls[0][0]
+    const update = (prisma.debateState.update as MockInstance).mock.calls[0][0]
     expect(update.data.turn_ends_at).toBe(currentTurnEndsAt + 30_000)
   })
 
   it('adds extra seconds to paused_time_remaining when debate is paused', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: true,
       turn_ends_at: null,
       paused_time_remaining: 45,
     })
     await extendTurn(MOCK_SESSION_ID, 30)
-    const update = (prisma.debateState.update as any).mock.calls[0][0]
+    const update = (prisma.debateState.update as MockInstance).mock.calls[0][0]
     expect(update.data.paused_time_remaining).toBe(75)
   })
 
   it('throws if live but turn_ends_at is null', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: false,
       turn_ends_at: null,
       paused_time_remaining: 0,
@@ -574,7 +574,7 @@ describe('extendTurn', () => {
 
   it('allows moderator to extend turn', async () => {
     mockSession({ host_id: 'other', moderator_id: MOCK_HOST_ID })
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: false,
       turn_ends_at: Date.now() + 20_000,
       paused_time_remaining: 0,
@@ -584,13 +584,13 @@ describe('extendTurn', () => {
   })
 
   it('handles extending by different amounts', async () => {
-    ;(prisma.debateState.findUnique as any).mockResolvedValue({
+    ;(prisma.debateState.findUnique as MockInstance).mockResolvedValue({
       is_paused: true,
       turn_ends_at: null,
       paused_time_remaining: 10,
     })
     await extendTurn(MOCK_SESSION_ID, 120)
-    const update = (prisma.debateState.update as any).mock.calls[0][0]
+    const update = (prisma.debateState.update as MockInstance).mock.calls[0][0]
     expect(update.data.paused_time_remaining).toBe(130)
   })
 })

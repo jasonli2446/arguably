@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import type { Socket as IoSocket } from 'socket.io-client'
 
 interface DebateParticipant {
   userId: string
@@ -19,10 +20,41 @@ interface UseDebateChannelOptions {
   onParticipantMuted?: (userId: string) => void
 }
 
+interface SocketResponse {
+  success: boolean
+  error?: string
+  state?: FullDebateState
+}
+
+interface FullDebateState {
+  debaterOrder: DebateParticipant[]
+  currentIndex: number
+  turnStartedAt: number | null
+  turnLength: number
+  isPaused: boolean
+  phase: DebatePhase
+  version: number
+  pausedTimeRemaining?: number
+}
+
+interface TurnChangedPayload {
+  debaterOrder: DebateParticipant[]
+  currentIndex: number
+  turnStartedAt: number
+  turnLength: number
+  phase?: DebatePhase
+  version: number
+}
+
+interface TurnExpiringPayload { version: number }
+interface TurnWarningPayload { secondsRemaining: number }
+interface DebatePausedPayload { version: number; timeRemaining: number }
+interface DebateResumedPayload { version: number; turnStartedAt: number; turnLength: number }
+
 // Socket.io emit with ack helper
-function request(socket: any, event: string, data: Record<string, any> = {}): Promise<any> {
+function request(socket: IoSocket, event: string, data: Record<string, unknown> = {}): Promise<SocketResponse> {
   return new Promise((resolve, reject) => {
-    socket.emit(event, data, (response: any) => {
+    socket.emit(event, data, (response: SocketResponse) => {
       if (response.success) {
         resolve(response)
       } else {
@@ -51,7 +83,7 @@ export function useDebateChannel({
   const [version, setVersion] = useState(0)
   const [graceCountdown, setGraceCountdown] = useState<number | null>(null)
 
-  const socketRef = useRef<any>(null)
+  const socketRef = useRef<IoSocket | null>(null)
   const warnedRef = useRef<Set<number>>(new Set())
   const onKickedRef = useRef(onParticipantKicked)
   const onPromotedRef = useRef(onParticipantPromoted)
@@ -65,7 +97,7 @@ export function useDebateChannel({
 
   const playBeep = useCallback((freq: number) => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const ctx = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext!)()
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
       osc.connect(gain)
@@ -114,7 +146,7 @@ export function useDebateChannel({
 
       // ── Debate events ──
 
-      socket.on('turnChanged', (payload: any) => {
+      socket.on('turnChanged', (payload: TurnChangedPayload) => {
         setDebaters(payload.debaterOrder)
         setCurrentIndex(payload.currentIndex)
         setTurnStartedAt(payload.turnStartedAt)
@@ -127,19 +159,19 @@ export function useDebateChannel({
         warnedRef.current = new Set()
       })
 
-      socket.on('turnExpiring', (payload: any) => {
+      socket.on('turnExpiring', (payload: TurnExpiringPayload) => {
         setPhase('GRACE')
         setVersion(payload.version)
         setGraceCountdown(3)
       })
 
-      socket.on('turnWarning', (payload: any) => {
+      socket.on('turnWarning', (payload: TurnWarningPayload) => {
         const secs = payload.secondsRemaining
         if (secs === 30) playBeep(440)
         if (secs === 10) playBeep(880)
       })
 
-      socket.on('debatePaused', (payload: any) => {
+      socket.on('debatePaused', (payload: DebatePausedPayload) => {
         setIsPaused(true)
         setDebateStatus('paused')
         setPhase('PAUSED')
@@ -148,7 +180,7 @@ export function useDebateChannel({
         setTurnStartedAt(null)
       })
 
-      socket.on('debateResumed', (payload: any) => {
+      socket.on('debateResumed', (payload: DebateResumedPayload) => {
         setIsPaused(false)
         setDebateStatus('live')
         setPhase('ACTIVE')
@@ -186,7 +218,7 @@ export function useDebateChannel({
       })
     }
 
-    function applyFullState(state: any) {
+    function applyFullState(state: FullDebateState) {
       setDebaters(state.debaterOrder)
       setCurrentIndex(state.currentIndex)
       setTurnStartedAt(state.turnStartedAt)
