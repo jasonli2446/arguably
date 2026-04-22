@@ -43,6 +43,7 @@ const STATUS_COLORS: Record<string, string> = {
   LIVE: 'bg-red-600',
   WAITING: 'bg-yellow-500',
   PAUSED: 'bg-gray-500',
+  ENDED: 'bg-blue-600',
 }
 
 export default function BrowseClient({ sessions }: { sessions: SessionData[] }) {
@@ -237,13 +238,22 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
                         <span className="font-bold">{session._count.participatesIns}</span>
                         <span className="text-sm">/ {session.sessionCapacity}</span>
                       </div>
-                      <Button
-                        className="debate-button bg-red-600 text-white border-black w-full mt-4"
-                        onClick={() => handleJoin(session)}
-                        disabled={joiningId === session.id}
-                      >
-                        {joiningId === session.id ? 'JOINING...' : 'JOIN DEBATE'}
-                      </Button>
+                      {session.status === 'ENDED' ? (
+                        <Button
+                          className="debate-button bg-blue-600 text-white border-blue-600 w-full mt-4"
+                          onClick={() => router.push(`/room/${session.code}/replay`)}
+                        >
+                          VIEW REPLAY
+                        </Button>
+                      ) : (
+                        <Button
+                          className="debate-button bg-red-600 text-white border-black w-full mt-4"
+                          onClick={() => handleJoin(session)}
+                          disabled={joiningId === session.id}
+                        >
+                          {joiningId === session.id ? 'JOINING...' : 'JOIN DEBATE'}
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 </motion.div>
