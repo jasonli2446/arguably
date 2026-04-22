@@ -96,7 +96,7 @@ export async function getSessionsByFilters(filters?: {
     
     sessionsWhere.status = (filters?.statuses?.length)
         ? { in: filters.statuses }
-        : { in: [SessionStatus.WAITING, SessionStatus.LIVE, SessionStatus.PAUSED] }
+        : { in: [SessionStatus.WAITING, SessionStatus.LIVE, SessionStatus.PAUSED, SessionStatus.ENDED] }
     
 
     if (filters?.search) 
@@ -114,8 +114,8 @@ export async function getSessionsByFilters(filters?: {
             host: { select: { id: true, username: true, realname: true } },
             // moderator username
             moderator: { select: { id: true, username: true, realname: true } },
-            // participant count
-            _count: { select: { participates_ins: { where: { left_at: null } } } },
+            // participant count (active for live sessions, total for ended)
+            _count: { select: { participates_ins: true } },
         },
         orderBy: { created_at: "desc" },
     })

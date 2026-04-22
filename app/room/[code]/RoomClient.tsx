@@ -316,7 +316,7 @@ export default function RoomClient({
       await debate.endDebate()
       await updateSessionStatus(session.id, SessionStatus.ENDED)
       toast.success('Session ended')
-      router.push('/browse')
+      router.push(`/room/${session.code}/replay`)
     } catch (err) {
       console.error('Failed to end session:', err)
       toast.error('Failed to end session')

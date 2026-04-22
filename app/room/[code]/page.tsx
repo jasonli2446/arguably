@@ -2,9 +2,9 @@ export const dynamic = 'force-dynamic'
 
 import { getSessionByCode } from '@/lib/actions/session'
 import { getTranscriptSegments } from '@/lib/actions/transcript'
-import { SessionRole } from '@/lib/generated/prisma'
+import { SessionRole, SessionStatus } from '@/lib/generated/prisma'
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import RoomClient from './RoomClient'
 
 export default async function RoomPage({ params }: { params: Promise<{ code: string }> }) {
@@ -13,6 +13,11 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
 
   if (!session) {
     notFound()
+  }
+
+  // Redirect ended sessions to replay page (before mounting RoomClient to avoid wasted WebRTC connections)
+  if (session.status === SessionStatus.ENDED) {
+    redirect(`/room/${code}/replay`)
   }
 
   const supabase = await createClient()
