@@ -103,6 +103,7 @@ describe('joinQueue', () => {
       session_role: SessionRole.AUDIENCE,
       left_at: null,
     })
+    ;(prisma.audienceQueue.findUnique as any).mockResolvedValue(null)
     ;(prisma.audienceQueue.create as any).mockResolvedValue({})
   })
 
@@ -165,6 +166,15 @@ describe('joinQueue', () => {
       left_at: null,
     })
     await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Only audience members can join the queue')
+  })
+
+  it('throws if user is already in the queue', async () => {
+    ;(prisma.audienceQueue.findUnique as any).mockResolvedValue({
+      id: 'existing-entry',
+      session_id: MOCK_SESSION_ID,
+      user_id: MOCK_USER_ID,
+    })
+    await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Already in the queue')
   })
 
   it('creates AudienceQueue entry on success', async () => {
