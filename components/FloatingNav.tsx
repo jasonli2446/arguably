@@ -2,18 +2,20 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, Settings, LogOut, Home, Plus, Compass, UserCircle, LogIn } from 'lucide-react'
+import { Menu, X, Settings, LogOut, Home, Plus, Compass, UserCircle, LogIn, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { User } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useUserRole } from '@/components/UserContext'
 
 export default function FloatingNav() {
   const [isOpen, setIsOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const userRole = useUserRole()
   const router = useRouter()
   const supabase = createClient()
 
@@ -56,6 +58,7 @@ export default function FloatingNav() {
     { label: 'CREATE', href: '/create', icon: Plus },
     { label: 'BROWSE', href: '/browse', icon: Compass },
     { label: 'SETTINGS', href: '/settings', icon: Settings },
+    ...(userRole === 'ADMIN' ? [{ label: 'ADMIN', href: '/admin', icon: Shield }] : []),
   ] : [
     { label: 'HOME', href: '/', icon: Home },
     { label: 'BROWSE', href: '/browse', icon: Compass },

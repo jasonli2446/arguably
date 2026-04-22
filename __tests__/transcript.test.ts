@@ -7,6 +7,9 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    user: {
+      findUnique: vi.fn(),
+    },
     participatesIn: {
       findUnique: vi.fn(),
     },
@@ -36,6 +39,13 @@ function mockAuth(userId: string | null) {
       }),
     },
   })
+  if (userId) {
+    ;(prisma.user.findUnique as any).mockResolvedValue({
+      banned_at: null,
+      suspended_until: null,
+      deleted_at: null,
+    })
+  }
 }
 
 // ── createTranscriptSegment ──
