@@ -203,7 +203,7 @@ export function useLiveTranscript({
     function recordNextChunk() {
       if (cancelled) return
 
-      const recorder = new MediaRecorder(audioStream, { mimeType })
+      const recorder = new MediaRecorder(audioStream, { mimeType: mimeType! })
       activeRecorder = recorder
       const chunkStartedAt = Date.now()
 
