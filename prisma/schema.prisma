@@ -78,6 +78,7 @@ model User {
   moderated_sessions Session[]        @relation("ModeratorToSession")
   participates_ins   ParticipatesIn[]
   transcripts        Transcript[]
+  transcript_segments TranscriptSegment[] @relation("TranscriptSpeaker")
   recordings         Recording[]
   votes_cast         Vote[]           @relation("VoterToVote")
   votes_received     Vote[]           @relation("TargetToVote")
@@ -123,8 +124,9 @@ model Session {
   moderator        User?            @relation("ModeratorToSession", fields: [moderator_id], references: [id])
   participates_ins ParticipatesIn[]
   debate_state     DebateState?
-  transcripts      Transcript[]
-  recordings       Recording[]
+  transcripts         Transcript[]
+  transcript_segments TranscriptSegment[]
+  recordings          Recording[]
   votes            Vote[]
   audience_queue   AudienceQueue[]
   team_assignments TeamAssignment[]
@@ -268,4 +270,26 @@ model RoleHistory {
 
   @@index([session_id])
   @@index([user_id])
+}
+
+/// Live transcription segment from OpenAI speech-to-text (REQ-6)
+model TranscriptSegment {
+  id             String   @id @default(cuid())
+  session_id     String
+  speaker_id     String   @db.Uuid
+  speaker_name   String
+  text           String
+  chunk_index    Int
+  started_at     DateTime
+  ended_at       DateTime
+  is_final       Boolean  @default(true)
+  provider       String
+  provider_model String
+  created_at     DateTime @default(now())
+
+  session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  speaker User    @relation("TranscriptSpeaker", fields: [speaker_id], references: [id], onDelete: Cascade)
+
+  @@unique([session_id, speaker_id, chunk_index])
+  @@index([session_id, started_at, created_at])
 }
