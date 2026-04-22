@@ -25,11 +25,15 @@ import {
   ThumbsDown,
   Crown,
   RefreshCw,
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useMediasoup } from '@/hooks/useMediasoup'
 import { useLiveTranscript } from '@/hooks/useLiveTranscript'
+import { useLiveClaims } from '@/hooks/useLiveClaims'
 import type { TranscriptSegmentView } from '@/lib/transcripts'
+import type { ClaimView } from '@/lib/claims'
 import { useDebateChannel } from '@/hooks/useDebateChannel'
 import { useQueueChannel } from '@/hooks/useQueueChannel'
 import { useKickVoteChannel } from '@/hooks/useKickVoteChannel'
@@ -65,6 +69,7 @@ interface SessionData {
     user: { id: string; username: string; realname: string | null }
   }[]
   transcriptSegments: TranscriptSegmentView[]
+  detectedClaims: ClaimView[]
 }
 
 export default function RoomClient({
@@ -144,6 +149,17 @@ export default function RoomClient({
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [transcript.segments])
+
+  const { claims } = useLiveClaims({
+    sessionId: session.id,
+    initialClaims: session.detectedClaims,
+  })
+
+  const claimsEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    claimsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [claims])
 
   const queueChannel = useQueueChannel({
     sessionId: session.id,
@@ -1223,6 +1239,78 @@ export default function RoomClient({
                     </div>
                   )}
                 </CardContent>
+              </Card>
+
+              {/* AI Claim Detection */}
+              <Card className="debate-card border-2 flex-1">
+                <CardHeader className="border-b-2 border-white/20">
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="debate-title flex items-center text-white">
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      AI CLAIM DETECTION
+                    </CardTitle>
+                    <span className="debate-mono text-[10px] uppercase text-purple-400">
+                      AI-SUGGESTED
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 h-64 overflow-y-auto">
+                  {claims.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center">
+                      <p className="text-gray-500 debate-mono text-sm">No claims detected yet</p>
+                      <p className="text-gray-600 debate-mono text-xs mt-2">
+                        Factual claims will be analyzed as debaters speak.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {claims.map((claim) => (
+                        <div
+                          key={claim.id}
+                          className="border-l-2 border-purple-500/60 pl-3"
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="debate-mono text-xs text-purple-300 uppercase truncate">
+                              {claim.speakerName}
+                            </span>
+                            <span className="debate-mono text-[10px] text-gray-500 shrink-0">
+                              {Math.round(claim.confidence * 100)}%
+                            </span>
+                          </div>
+                          <p className="text-sm text-white/80 italic mb-1">
+                            &ldquo;{claim.claimText}&rdquo;
+                          </p>
+                          <p className="text-xs text-gray-400 mb-1">
+                            {claim.analysis}
+                          </p>
+                          {claim.sources.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {claim.sources.map((source, i) => (
+                                <a
+                                  key={i}
+                                  href={source.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer nofollow"
+                                  className="inline-flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-300 debate-mono"
+                                  title={source.description}
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  {source.title}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <div ref={claimsEndRef} />
+                    </div>
+                  )}
+                </CardContent>
+                <div className="px-4 pb-2">
+                  <p className="text-[10px] text-gray-600 debate-mono text-center">
+                    Sources are AI-generated and may not be accurate
+                  </p>
+                </div>
               </Card>
 
               {/* Participation */}
