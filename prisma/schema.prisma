@@ -137,7 +137,8 @@ model Session {
   votes            Vote[]
   audience_queue   AudienceQueue[]
   team_assignments TeamAssignment[]
-  role_history     RoleHistory[]
+  role_history      RoleHistory[]
+  detected_claims   DetectedClaim[]
 }
 
 model DebateState {
@@ -294,11 +295,31 @@ model TranscriptSegment {
   provider_model String
   created_at     DateTime @default(now())
 
-  session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
-  speaker User    @relation("TranscriptSpeaker", fields: [speaker_id], references: [id], onDelete: Cascade)
+  session         Session         @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  speaker         User            @relation("TranscriptSpeaker", fields: [speaker_id], references: [id], onDelete: Cascade)
+  detected_claims DetectedClaim[]
 
   @@unique([session_id, speaker_id, chunk_index])
   @@index([session_id, started_at, created_at])
+}
+
+/// AI-detected factual claim from a transcript segment (REQ-7)
+model DetectedClaim {
+  id                    String   @id @default(cuid())
+  session_id            String
+  transcript_segment_id String
+  claim_text            String
+  analysis              String
+  confidence            Float
+  sources               Json     // [{title, url, description}]
+  provider              String   // "gemini"
+  provider_model        String
+  created_at            DateTime @default(now())
+
+  session Session           @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  segment TranscriptSegment @relation(fields: [transcript_segment_id], references: [id], onDelete: Cascade)
+
+  @@index([session_id, created_at])
 }
 
 /// Single-row platform configuration managed by admins

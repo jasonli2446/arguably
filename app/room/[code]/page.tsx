@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { getSessionByCode } from '@/lib/actions/session'
 import { getTranscriptSegments } from '@/lib/actions/transcript'
+import { getDetectedClaims } from '@/lib/actions/claims'
 import { SessionRole, SessionStatus } from '@/lib/generated/prisma'
 import { createClient } from '@/lib/supabase/server'
 import { notFound, redirect } from 'next/navigation'
@@ -39,6 +40,7 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
   }
 
   const transcriptSegments = await getTranscriptSegments(session.id).catch(() => [])
+  const detectedClaims = await getDetectedClaims(session.id).catch(() => [])
 
   // Serialize for client component
   const serialized = {
@@ -75,6 +77,7 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
       },
     })),
     transcriptSegments,
+    detectedClaims,
   }
 
   return (
