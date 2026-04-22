@@ -12,8 +12,14 @@ services:
       - RTC_MAX_PORT=40100
       - TURN_HOST=${ANNOUNCED_IP:-127.0.0.1}
       - TURN_PORT=3478
-      - TURN_USERNAME=arguably
-      - TURN_PASSWORD=arguably-turn-password
+      - TURN_USERNAME=${TURN_USERNAME:-arguably}
+      - TURN_PASSWORD=${TURN_PASSWORD:-arguably-turn-password}
+      - NODE_ENV=${NODE_ENV:-development}
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
     restart: unless-stopped
 
   coturn:
@@ -21,4 +27,9 @@ services:
     network_mode: host
     volumes:
       - ./turnserver.conf:/etc/turnserver.conf:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
     restart: unless-stopped
