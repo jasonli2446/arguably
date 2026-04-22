@@ -93,7 +93,9 @@ export async function joinQueue(sessionId: string) {
     select: { status: true },
   })
   if (!session) throw new Error("Session not found")
-  if (session.status !== SessionStatus.LIVE) throw new Error("Session is not live")
+  if (session.status !== SessionStatus.LIVE && session.status !== SessionStatus.WAITING) {
+    throw new Error("Session is not active")
+  }
 
   // Verify user is an audience member
   const participation = await prisma.participatesIn.findUnique({

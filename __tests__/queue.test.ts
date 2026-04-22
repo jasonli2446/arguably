@@ -116,12 +116,20 @@ describe('joinQueue', () => {
     await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Session not found')
   })
 
-  it('throws "Session is not live"', async () => {
+  it('allows joining queue when session is WAITING', async () => {
     ;(prisma.session.findUnique as any).mockResolvedValue({
       id: MOCK_SESSION_ID,
       status: SessionStatus.WAITING,
     })
-    await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Session is not live')
+    await expect(joinQueue(MOCK_SESSION_ID)).resolves.toBeDefined()
+  })
+
+  it('throws "Session is not active" when session is ENDED', async () => {
+    ;(prisma.session.findUnique as any).mockResolvedValue({
+      id: MOCK_SESSION_ID,
+      status: SessionStatus.ENDED,
+    })
+    await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Session is not active')
   })
 
   it('throws if not a participant (findUnique returns null)', async () => {
