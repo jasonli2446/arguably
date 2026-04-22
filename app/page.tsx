@@ -1,12 +1,19 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight, Users, Clock, Shield, Mic, BarChart3, Zap, Play, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import FloatingNav from '@/components/FloatingNav'
+import { getLandingPageStats } from '@/lib/actions/session'
 
 export default function Home() {
+  const [stats, setStats] = useState<{ liveSessionCount: number; activeParticipantCount: number } | null>(null)
+
+  useEffect(() => {
+    getLandingPageStats().then(setStats)
+  }, [])
   return (
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
       <div className="debate-texture fixed inset-0" />
@@ -23,22 +30,24 @@ export default function Home() {
             {/* Asymmetrical hero layout */}
             <div className="grid lg:grid-cols-12 gap-8 items-center">
               <div className="lg:col-span-7 space-y-6">
-                <motion.div
-                  initial={{ opacity: 0, x: -50 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
+                {stats && stats.liveSessionCount > 0 && (
                   <motion.div
-                    className="inline-block"
-                    whileHover={{ scale: 1.05, rotate: -2 }}
-                    transition={{ type: "spring", stiffness: 400 }}
+                    initial={{ opacity: 0, x: -50 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
                   >
-                    <span className="debate-badge bg-yellow-400 text-black">
-                      <Zap className="w-3 h-3 inline mr-2" />
-                      87 LIVE NOW
-                    </span>
+                    <motion.div
+                      className="inline-block"
+                      whileHover={{ scale: 1.05, rotate: -2 }}
+                      transition={{ type: "spring", stiffness: 400 }}
+                    >
+                      <span className="debate-badge bg-yellow-400 text-black">
+                        <Zap className="w-3 h-3 inline mr-2" />
+                        {stats.liveSessionCount} LIVE NOW
+                      </span>
+                    </motion.div>
                   </motion.div>
-                </motion.div>
+                )}
 
                 <h1 className="text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-black leading-none">
                   <motion.span
@@ -95,20 +104,48 @@ export default function Home() {
               </div>
 
               {/* Decorative element - absolute on mobile, grid on desktop */}
-              <div className="lg:col-span-5 relative hidden lg:block">
+              {stats && stats.liveSessionCount > 0 && (
+                <div className="lg:col-span-5 relative hidden lg:block">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8, rotate: -5 }}
+                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                    transition={{ delay: 0.7, type: "spring" }}
+                    className="relative"
+                  >
+                    <div className="absolute -top-8 -right-8 w-32 h-32 bg-yellow-400 border-2 border-black animate-float" style={{ transform: 'rotate(12deg)' }} />
+                    <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-blue-600 border-2 border-black animate-float" style={{ animationDelay: '2s', transform: 'rotate(-7deg)' }} />
+                    <div className="relative bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-white/20 p-8 rotate-2 skew-y-1">
+                      <div className="text-center space-y-4">
+                        <div className="text-6xl font-black text-gray-900 dark:text-white" style={{ letterSpacing: '-0.03em' }}>{stats.liveSessionCount}</div>
+                        <div className="text-sm debate-mono uppercase text-gray-600 dark:text-gray-300">LIVE RIGHT NOW</div>
+                        <div className="flex justify-center space-x-2 pt-4">
+                          <div className="w-2 h-2 bg-red-600 animate-pulse" />
+                          <div className="w-2 h-2 bg-red-600 animate-pulse" style={{ animationDelay: '0.5s' }} />
+                          <div className="w-2 h-2 bg-red-600 animate-pulse" style={{ animationDelay: '1s' }} />
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </div>
+
+            {/* Mobile version of active debates card */}
+            {stats && stats.liveSessionCount > 0 && (
+              <div className="lg:hidden mt-12">
                 <motion.div
                   initial={{ opacity: 0, scale: 0.8, rotate: -5 }}
                   animate={{ opacity: 1, scale: 1, rotate: 0 }}
                   transition={{ delay: 0.7, type: "spring" }}
-                  className="relative"
+                  className="relative mx-auto max-w-xs"
                 >
-                  <div className="absolute -top-8 -right-8 w-32 h-32 bg-yellow-400 border-2 border-black animate-float" style={{ transform: 'rotate(12deg)' }} />
-                  <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-blue-600 border-2 border-black animate-float" style={{ animationDelay: '2s', transform: 'rotate(-7deg)' }} />
-                  <div className="relative bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-white/20 p-8 rotate-2 skew-y-1">
-                    <div className="text-center space-y-4">
-                      <div className="text-6xl font-black text-gray-900 dark:text-white" style={{ letterSpacing: '-0.03em' }}>87</div>
-                      <div className="text-sm debate-mono uppercase text-gray-600 dark:text-gray-300">LIVE RIGHT NOW</div>
-                      <div className="flex justify-center space-x-2 pt-4">
+                  <div className="absolute -top-6 -right-6 w-24 h-24 bg-yellow-400 border-2 border-black animate-float" style={{ transform: 'rotate(12deg)' }} />
+                  <div className="absolute -bottom-3 -left-3 w-20 h-20 bg-blue-600 border-2 border-black animate-float" style={{ animationDelay: '2s', transform: 'rotate(-7deg)' }} />
+                  <div className="relative bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-white/20 p-6 rotate-1 skew-y-1">
+                    <div className="text-center space-y-3">
+                      <div className="text-5xl font-black text-gray-900 dark:text-white" style={{ letterSpacing: '-0.03em' }}>{stats.liveSessionCount}</div>
+                      <div className="text-xs debate-mono uppercase text-gray-600 dark:text-gray-300">LIVE RIGHT NOW</div>
+                      <div className="flex justify-center space-x-2 pt-2">
                         <div className="w-2 h-2 bg-red-600 animate-pulse" />
                         <div className="w-2 h-2 bg-red-600 animate-pulse" style={{ animationDelay: '0.5s' }} />
                         <div className="w-2 h-2 bg-red-600 animate-pulse" style={{ animationDelay: '1s' }} />
@@ -117,31 +154,7 @@ export default function Home() {
                   </div>
                 </motion.div>
               </div>
-            </div>
-
-            {/* Mobile version of active debates card */}
-            <div className="lg:hidden mt-12">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8, rotate: -5 }}
-                animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                transition={{ delay: 0.7, type: "spring" }}
-                className="relative mx-auto max-w-xs"
-              >
-                <div className="absolute -top-6 -right-6 w-24 h-24 bg-yellow-400 border-2 border-black animate-float" style={{ transform: 'rotate(12deg)' }} />
-                <div className="absolute -bottom-3 -left-3 w-20 h-20 bg-blue-600 border-2 border-black animate-float" style={{ animationDelay: '2s', transform: 'rotate(-7deg)' }} />
-                <div className="relative bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-white/20 p-6 rotate-1 skew-y-1">
-                  <div className="text-center space-y-3">
-                    <div className="text-5xl font-black text-gray-900 dark:text-white" style={{ letterSpacing: '-0.03em' }}>87</div>
-                    <div className="text-xs debate-mono uppercase text-gray-600 dark:text-gray-300">LIVE RIGHT NOW</div>
-                    <div className="flex justify-center space-x-2 pt-2">
-                      <div className="w-2 h-2 bg-red-600 animate-pulse" />
-                      <div className="w-2 h-2 bg-red-600 animate-pulse" style={{ animationDelay: '0.5s' }} />
-                      <div className="w-2 h-2 bg-red-600 animate-pulse" style={{ animationDelay: '1s' }} />
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
+            )}
           </motion.div>
         </section>
 
@@ -409,14 +422,20 @@ export default function Home() {
                       </motion.div>
                     </Link>
 
-                    <div className="flex items-center space-x-4 text-sm debate-mono text-gray-900 dark:text-white">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" />
-                        <span>87 LIVE</span>
+                    {stats && stats.liveSessionCount > 0 && (
+                      <div className="flex items-center space-x-4 text-sm debate-mono text-gray-900 dark:text-white">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" />
+                          <span>{stats.liveSessionCount} LIVE</span>
+                        </div>
+                        {stats.activeParticipantCount > 0 && (
+                          <>
+                            <div className="text-gray-500 dark:text-gray-400">&bull;</div>
+                            <div className="text-gray-600 dark:text-gray-300">{stats.activeParticipantCount} ONLINE</div>
+                          </>
+                        )}
                       </div>
-                      <div className="text-gray-500 dark:text-gray-400">•</div>
-                      <div className="text-gray-600 dark:text-gray-300">~3K ONLINE</div>
-                    </div>
+                    )}
                   </div>
                 </motion.div>
               </div>

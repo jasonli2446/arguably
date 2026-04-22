@@ -535,6 +535,22 @@ export async function promoteToDebater(sessionId: string, targetUserId: string) 
   })
 }
 
+export async function getLandingPageStats() {
+    const [liveSessionCount, activeParticipantCount] = await Promise.all([
+        prisma.session.count({
+            where: { status: SessionStatus.LIVE },
+        }),
+        prisma.participatesIn.count({
+            where: {
+                left_at: null,
+                session: { status: { in: [SessionStatus.LIVE, SessionStatus.WAITING, SessionStatus.PAUSED] } },
+            },
+        }),
+    ])
+
+    return { liveSessionCount, activeParticipantCount }
+}
+
 export async function updateSessionStatus(sessionId: string, status: SessionStatus) {
     
     const supabase = await createClient()
