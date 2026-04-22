@@ -640,6 +640,58 @@ export default function RoomClient({
                               {getDebaterCapacityMessage()}
                             </p>
                           )}
+                          {/* Prominent "Become a Debater" CTA for audience members during WAITING */}
+                          {canUpgradeToDebater && !isExpertVsCrowd && (
+                            <div className="mb-4 w-full max-w-xs mx-auto">
+                              {session.type === SessionType.PANEL ? (
+                                <Button
+                                  className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                                  onClick={() => handleUpgradeToDebater(false)}
+                                  disabled={isJoining}
+                                >
+                                  <Swords className="w-4 h-4 mr-2" />
+                                  {isJoining ? 'JOINING...' : 'JOIN AS PANELIST'}
+                                </Button>
+                              ) : !showDebaterOptions ? (
+                                <Button
+                                  className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                                  onClick={() => setShowDebaterOptions(true)}
+                                  disabled={isJoining}
+                                >
+                                  <Swords className="w-4 h-4 mr-2" />
+                                  {isJoining ? 'JOINING...' : 'BECOME A DEBATER'}
+                                </Button>
+                              ) : (
+                                <div className="space-y-2">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <Button
+                                      className="debate-button bg-red-600 text-white border-red-700 font-bold text-sm"
+                                      onClick={() => handleUpgradeToDebater(true)}
+                                      disabled={isJoining || proponentsFull}
+                                    >
+                                      {proponentsFull ? 'PROPONENT FULL' : 'JOIN AS PROPONENT'}
+                                    </Button>
+                                    <Button
+                                      className="debate-button bg-blue-600 text-white border-blue-700 font-bold text-sm"
+                                      onClick={() => handleUpgradeToDebater(false)}
+                                      disabled={isJoining || opponentsFull}
+                                    >
+                                      {opponentsFull ? 'OPPONENT FULL' : 'JOIN AS OPPONENT'}
+                                    </Button>
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="debate-button w-full text-xs"
+                                    onClick={() => setShowDebaterOptions(false)}
+                                    disabled={isJoining}
+                                  >
+                                    CANCEL
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                           {isModeratorOrCreator && (
                             <Button
                               className="debate-button bg-red-600 text-white border-red-700"
@@ -878,8 +930,11 @@ export default function RoomClient({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-4">
-                    {/* Queue actions for audience members */}
-                    {isAudience && (
+                    {/* Queue actions for audience members
+                        During WAITING: only show for Expert vs Crowd (queue needed to start debate)
+                        During LIVE: show for all formats (queue used for mid-debate promotion)
+                        Always show if user is already in queue (so they can leave) */}
+                    {isAudience && (queueChannel.isInQueue || isExpertVsCrowd || session.status === SessionStatus.LIVE) && (
                       <div className="mb-4">
                         {queueChannel.isInQueue ? (
                           <div className="space-y-2">
