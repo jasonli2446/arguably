@@ -28,6 +28,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useMediasoup } from '@/hooks/useMediasoup'
+import { useLiveTranscript } from '@/hooks/useLiveTranscript'
+import type { TranscriptSegmentView } from '@/lib/transcripts'
 import { useDebateChannel } from '@/hooks/useDebateChannel'
 import { useQueueChannel } from '@/hooks/useQueueChannel'
 import { useKickVoteChannel } from '@/hooks/useKickVoteChannel'
@@ -62,6 +64,7 @@ interface SessionData {
     sessionRole: SessionRole
     user: { id: string; username: string; realname: string | null }
   }[]
+  transcriptSegments: TranscriptSegmentView[]
 }
 
 export default function RoomClient({
@@ -126,6 +129,21 @@ export default function RoomClient({
     onParticipantPromoted: () => router.refresh(),
     onParticipantMuted: () => router.refresh(),
   })
+
+  const transcript = useLiveTranscript({
+    sessionId: session.id,
+    currentUserId,
+    localStream,
+    enabled: isDebater && session.status !== SessionStatus.ENDED,
+    audioMuted,
+    initialSegments: session.transcriptSegments,
+  })
+
+  const transcriptEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [transcript.segments])
 
   const queueChannel = useQueueChannel({
     sessionId: session.id,
@@ -481,6 +499,14 @@ export default function RoomClient({
     : displayTime <= 30
     ? 'text-orange-400'
     : 'text-white'
+
+  const transcriptStatusMessage = transcript.error
+    ? transcript.error
+    : transcript.isCapturing
+    ? 'Mic transcription is live'
+    : isDebater
+    ? audioMuted ? 'Unmute to start live transcription' : 'Waiting for microphone access'
+    : 'Join as a debater to generate transcript'
 
   // Confirm dialog config
   const confirmDialogConfig = confirmDialog ? {
@@ -1144,26 +1170,58 @@ export default function RoomClient({
               {/* Live Transcript */}
               <Card className="debate-card border-2 flex-1">
                 <CardHeader className="border-b-2 border-white/20">
-                  <CardTitle className="debate-title flex items-center text-white">
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    LIVE TRANSCRIPT
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 h-64 overflow-y-auto">
-                  <div className="h-full flex flex-col items-center justify-center space-y-3">
-                    <div className="w-12 h-12 border-2 border-dashed border-white/20 flex items-center justify-center">
-                      <MessageSquare className="w-6 h-6 text-white/20" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-white/40 debate-title text-sm mb-1">COMING SOON</p>
-                      <p className="text-gray-500 debate-mono text-xs max-w-[200px]">
-                        Live transcription will be available in a future update
-                      </p>
-                    </div>
-                    <span className="debate-badge bg-gray-800 text-gray-400 text-[10px]">
-                      PLANNED FEATURE
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="debate-title flex items-center text-white">
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      LIVE TRANSCRIPT
+                    </CardTitle>
+                    <span
+                      className={`debate-mono text-[10px] uppercase ${
+                        transcript.error
+                          ? 'text-red-400'
+                          : transcript.isCapturing
+                          ? 'text-green-400'
+                          : 'text-gray-400'
+                      }`}
+                    >
+                      {transcript.error ? 'Issue' : transcript.isCapturing ? 'Listening' : 'Idle'}
                     </span>
                   </div>
+                </CardHeader>
+                <CardContent className="p-4 h-64 overflow-y-auto">
+                  {transcript.segments.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center">
+                      <p className="text-gray-500 debate-mono text-sm">{transcriptStatusMessage}</p>
+                      <p className="text-gray-600 debate-mono text-xs mt-2">
+                        Transcript segments post every few seconds while a debater microphone is active.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {transcript.segments.map((segment) => (
+                        <div
+                          key={segment.id}
+                          className="border-l-2 border-red-500/60 pl-3"
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="debate-mono text-xs text-red-300 uppercase truncate">
+                              {segment.speakerName}
+                            </span>
+                            <span className="debate-mono text-[10px] text-gray-500 shrink-0">
+                              {new Date(segment.startedAt).toLocaleTimeString([], {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                          <p className="text-sm leading-relaxed text-white">
+                            {segment.text}
+                          </p>
+                        </div>
+                      ))}
+                      <div ref={transcriptEndRef} />
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

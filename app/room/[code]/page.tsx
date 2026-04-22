@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { getSessionByCode } from '@/lib/actions/session'
+import { getTranscriptSegments } from '@/lib/actions/transcript'
 import { SessionRole } from '@/lib/generated/prisma'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
@@ -31,6 +32,8 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
   if (!session.host) {
     notFound()
   }
+
+  const transcriptSegments = await getTranscriptSegments(session.id).catch(() => [])
 
   // Serialize for client component
   const serialized = {
@@ -66,6 +69,7 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
         realname: p.user.realname ?? null,
       },
     })),
+    transcriptSegments,
   }
 
   return (
