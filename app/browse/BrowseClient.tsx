@@ -131,13 +131,13 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
           </motion.div>
 
           {showFilters && (
-            <div className="mb-8 bg-gray-900 border-2 border-white/20 p-4">
+            <div className="mb-8 bg-gray-900 border-2 border-white/30 p-4">
               <div className="flex flex-wrap gap-6">
                 <div>
                   <p className="text-xs font-bold debate-mono text-gray-400 mb-2">TYPE</p>
                   <div className="flex flex-wrap gap-2">
                     {Object.entries(TYPE_LABELS).map(([key, label]) => (
-                      <button key={key} onClick={() => toggleTypeFilter(key)} className={`px-3 py-1 text-xs debate-mono border-2 transition-colors ${typeFilter.includes(key) ? 'bg-red-600 border-red-600 text-white' : 'border-white/20 text-gray-400 hover:border-white/40'}`}>{label}</button>
+                      <button key={key} onClick={() => toggleTypeFilter(key)} className={`px-3 py-1 text-xs debate-mono border-2 transition-colors ${typeFilter.includes(key) ? 'bg-red-600 border-red-600 text-white' : 'border-white/30 text-gray-400 hover:border-white/40'}`}>{label}</button>
                     ))}
                   </div>
                 </div>
@@ -145,7 +145,7 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
                   <p className="text-xs font-bold debate-mono text-gray-400 mb-2">STATUS</p>
                   <div className="flex flex-wrap gap-2">
                     {Object.keys(STATUS_COLORS).map((status) => (
-                      <button key={status} onClick={() => toggleStatusFilter(status)} className={`px-3 py-1 text-xs debate-mono border-2 transition-colors ${statusFilter.includes(status) ? 'bg-red-600 border-red-600 text-white' : 'border-white/20 text-gray-400 hover:border-white/40'}`}>{status}</button>
+                      <button key={status} onClick={() => toggleStatusFilter(status)} className={`px-3 py-1 text-xs debate-mono border-2 transition-colors ${statusFilter.includes(status) ? 'bg-red-600 border-red-600 text-white' : 'border-white/30 text-gray-400 hover:border-white/40'}`}>{status}</button>
                     ))}
                   </div>
                 </div>
@@ -181,7 +181,7 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 + index * 0.1 }}
-                className="bg-gray-900 border-2 border-white/20 p-4 text-center"
+                className="bg-gray-900 border-2 border-white/30 p-4 text-center"
               >
                 <stat.icon className="w-6 h-6 text-red-400 mx-auto mb-2" />
                 <div className="text-3xl font-black text-white mb-1">{stat.value}</div>
@@ -197,7 +197,7 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
               animate={{ opacity: 1 }}
               className="text-center py-20"
             >
-              <p className="text-2xl font-bold debate-title text-gray-500 mb-4">
+              <p className="text-2xl font-bold debate-title text-gray-400 mb-4">
                 {searchQuery ? 'NO MATCHING DEBATES' : 'NO ACTIVE DEBATES'}
               </p>
               <p className="text-gray-400 debate-text">
