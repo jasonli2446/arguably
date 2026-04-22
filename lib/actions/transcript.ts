@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { requireParticipant } from "@/lib/actions/utils"
+import { listTranscriptSegments } from "@/lib/transcripts"
 
 export async function createTranscriptSegment(
   sessionId: string,
@@ -34,4 +35,10 @@ export async function getTranscriptBySession(sessionId: string) {
       speaker: { select: { id: true, username: true, realname: true } },
     },
   })
+}
+
+export async function getTranscriptSegments(sessionId: string) {
+  await requireParticipant(sessionId)
+
+  return listTranscriptSegments(sessionId)
 }
