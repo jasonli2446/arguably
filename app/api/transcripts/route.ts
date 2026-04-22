@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
 import { saveTranscriptSegment } from "@/lib/transcripts"
+import { detectAndSaveClaims } from "@/lib/claims"
 import { SessionRole, SessionStatus } from "@/lib/generated/prisma"
 
 const MAX_AUDIO_BYTES = 4 * 1024 * 1024
@@ -149,6 +150,16 @@ export async function POST(request: Request) {
     provider: "openai",
     providerModel: model,
   })
+
+  // Fire-and-forget claim detection (only if Gemini API key is configured)
+  if (process.env.GEMINI_API_KEY) {
+    detectAndSaveClaims({
+      segmentId: savedSegment.id,
+      sessionId,
+      text: savedSegment.text,
+      speakerName: savedSegment.speakerName,
+    }).catch((err) => console.error("[claim-detection] Fire-and-forget failed:", err))
+  }
 
   return NextResponse.json({
     segment: savedSegment,
