@@ -13,14 +13,6 @@ export default function AuthSync() {
         ensureUserProfile()
       }
     })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN") {
-        ensureUserProfile()
-      }
-    })
-
-    return () => subscription.unsubscribe()
   }, [])
 
   return null

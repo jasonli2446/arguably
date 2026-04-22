@@ -56,10 +56,12 @@ export default function AuthPage() {
       }
     }
 
-    await ensureUserProfile()
+    try {
+      await ensureUserProfile()
+    } catch (e) {
+      console.error("Failed to ensure profile:", e)
+    }
     router.push("/browse")
-    router.refresh()
-    setLoading(false)
   }
 
   return (
