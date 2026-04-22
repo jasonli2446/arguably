@@ -93,7 +93,9 @@ export async function joinQueue(sessionId: string) {
     select: { status: true },
   })
   if (!session) throw new Error("Session not found")
-  if (session.status !== SessionStatus.LIVE) throw new Error("Session is not live")
+  if (session.status !== SessionStatus.LIVE && session.status !== SessionStatus.WAITING) {
+    throw new Error("Session is not active")
+  }
 
   // Verify user is an audience member
   const participation = await prisma.participatesIn.findUnique({
@@ -106,6 +108,14 @@ export async function joinQueue(sessionId: string) {
   }
   if (participation.session_role !== SessionRole.AUDIENCE) {
     throw new Error("Only audience members can join the queue")
+  }
+
+  // Prevent duplicate queue entries
+  const existing = await prisma.audienceQueue.findUnique({
+    where: { session_id_user_id: { session_id: sessionId, user_id: user.id } },
+  })
+  if (existing) {
+    throw new Error("Already in the queue")
   }
 
   return await prisma.audienceQueue.create({

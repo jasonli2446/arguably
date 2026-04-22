@@ -73,15 +73,15 @@ export function useQueueChannel({ sessionId, userId }: UseQueueChannelOptions) {
 
   const isInQueue = myPosition !== null
 
-  const joinQueue = useCallback(
-    () => joinQueueAction(sessionId),
-    [sessionId],
-  )
+  const joinQueue = useCallback(async () => {
+    await joinQueueAction(sessionId)
+    await fetchQueue()
+  }, [sessionId, fetchQueue])
 
-  const leaveQueue = useCallback(
-    () => leaveQueueAction(sessionId),
-    [sessionId],
-  )
+  const leaveQueue = useCallback(async () => {
+    await leaveQueueAction(sessionId)
+    await fetchQueue()
+  }, [sessionId, fetchQueue])
 
   return {
     queue,

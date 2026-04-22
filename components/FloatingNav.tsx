@@ -75,8 +75,8 @@ export default function FloatingNav() {
           <div
             className={`transition-all duration-500 ease-out ${
               scrolled
-                ? 'bg-white/95 dark:bg-black/95 backdrop-blur-md border-2 border-gray-300 dark:border-white/30 shadow-[8px_8px_0px_rgba(0,0,0,0.2)] dark:shadow-[8px_8px_0px_rgba(0,0,0,0.5)] px-6'
-                : 'bg-transparent border-b-2 border-gray-200 dark:border-white/10'
+                ? 'bg-white/95 dark:bg-black/95 backdrop-blur-md border-2 border-gray-400 dark:border-white/40 shadow-[8px_8px_0px_rgba(0,0,0,0.2)] dark:shadow-[8px_8px_0px_rgba(0,0,0,0.5)] px-6'
+                : 'bg-transparent border-b-2 border-gray-400 dark:border-white/30'
             }`}
             style={{
               transform: scrolled ? 'skew(-1deg)' : 'none',
@@ -203,14 +203,14 @@ export default function FloatingNav() {
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.3 }}
-                className="md:hidden border-t-2 border-gray-200 dark:border-white/20 bg-white/98 dark:bg-black/98 backdrop-blur-md overflow-hidden"
+                className="md:hidden border-t-2 border-gray-300 dark:border-white/30 bg-white/98 dark:bg-black/98 backdrop-blur-md overflow-hidden"
               >
                 <div className="p-4 space-y-2">
                   {navItems.map((item, index) => (
                     <motion.a
                       key={item.label}
                       href={item.href}
-                      className="flex items-center gap-3 px-4 py-3 border-2 border-gray-300 dark:border-white/30 hover:border-gray-900 dark:hover:border-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all text-gray-900 dark:text-white font-bold"
+                      className="flex items-center gap-3 px-4 py-3 border-2 border-gray-400 dark:border-white/40 hover:border-gray-900 dark:hover:border-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all text-gray-900 dark:text-white font-bold"
                       onClick={() => setIsOpen(false)}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -223,7 +223,7 @@ export default function FloatingNav() {
                       <span>{item.label}</span>
                     </motion.a>
                   ))}
-                  <div className="pt-2 mt-2 border-t-2 border-gray-200 dark:border-white/20">
+                  <div className="pt-2 mt-2 border-t-2 border-gray-300 dark:border-white/30">
                     {!loading && (
                       user ? (
                         <motion.button

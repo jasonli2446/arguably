@@ -103,7 +103,7 @@ export default function AuthPage() {
                 transition={{ delay: 0.4 + i * 0.15 }}
                 className="flex items-center gap-4"
               >
-                <div className="w-10 h-10 border-2 border-white/20 bg-white/5 flex items-center justify-center" style={{ transform: "skew(-2deg)" }}>
+                <div className="w-10 h-10 border-2 border-white/30 bg-white/5 flex items-center justify-center" style={{ transform: "skew(-2deg)" }}>
                   <item.icon className="w-5 h-5 text-red-400" />
                 </div>
                 <div>
@@ -121,7 +121,7 @@ export default function AuthPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
-          <div className="bg-gray-900 border-2 border-white/20 p-8 shadow-[8px_8px_0px_rgba(0,0,0,0.3)]">
+          <div className="bg-gray-900 border-2 border-white/30 p-8 shadow-[8px_8px_0px_rgba(0,0,0,0.3)]">
             {/* Mobile title */}
             <div className="md:hidden mb-6">
               <h1 className="text-3xl font-black text-white debate-title">
@@ -237,7 +237,7 @@ export default function AuthPage() {
               </button>
             </form>
 
-            <div className="mt-6 pt-6 border-t-2 border-white/10 text-center">
+            <div className="mt-6 pt-6 border-t-2 border-white/20 text-center">
               <p className="text-sm text-gray-400 debate-text">
                 {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
                 <button

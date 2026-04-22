@@ -556,7 +556,7 @@ export default function RoomClient({
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
       <div className="debate-texture fixed inset-0" />
 
-      <header className="relative z-10 border-b-2 border-white/20 bg-gray-900/90 backdrop-blur-sm">
+      <header className="relative z-10 border-b-2 border-white/30 bg-gray-900/90 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -608,7 +608,7 @@ export default function RoomClient({
 
               <div className="min-h-[400px]">
                 <Card className="debate-card border-2">
-                  <CardHeader className="border-b-2 border-white/20">
+                  <CardHeader className="border-b-2 border-white/30">
                     <div className="flex items-center justify-between">
                       <CardTitle className="debate-title flex items-center text-white">
                         <div className={`w-3 h-3 rounded-full mr-3 ${statusDot}`} />
@@ -674,7 +674,7 @@ export default function RoomClient({
                                   className={`flex flex-col p-3 border-2 transition-all ${
                                     isSpeaking
                                       ? 'border-yellow-400 bg-yellow-400/10 shadow-[0_0_15px_rgba(250,204,21,0.3)]'
-                                      : 'border-white/20 opacity-60'
+                                      : 'border-white/30 opacity-60'
                                   }`}
                                 >
                                   <div className="flex items-center space-x-3">
@@ -712,7 +712,7 @@ export default function RoomClient({
                                   </div>
                                   {/* Kick vote UI */}
                                   {canVoteToKick && voteState && (
-                                    <div className="mt-2 pt-2 border-t border-white/10">
+                                    <div className="mt-2 pt-2 border-t border-white/30">
                                       <div className="flex items-center justify-between mb-1">
                                         <span className="text-xs debate-mono text-gray-400">
                                           {voteState.voteCount} / {voteState.requiredVotes} votes to kick
@@ -757,7 +757,7 @@ export default function RoomClient({
                         ) : debaters.length > 0 ? (
                           <div className="flex items-center justify-center gap-6 flex-wrap">
                             {debaters.map((p, i) => (
-                              <div key={p.userId} className="flex items-center space-x-3 p-3 border-2 border-white/20">
+                              <div key={p.userId} className="flex items-center space-x-3 p-3 border-2 border-white/30">
                                 <div
                                   className={`w-14 h-14 border-2 border-black flex items-center justify-center text-white font-bold text-lg ${
                                     i === 0
@@ -864,7 +864,7 @@ export default function RoomClient({
               {/* Speaker Queue */}
               <div>
                 <Card className="debate-card border-2">
-                  <CardHeader className="border-b-2 border-white/20">
+                  <CardHeader className="border-b-2 border-white/30">
                     <CardTitle className="debate-title flex items-center justify-between text-white">
                       <div className="flex items-center">
                         <Hand className="w-4 h-4 mr-2" />
@@ -896,6 +896,7 @@ export default function RoomClient({
                                   await queueChannel.leaveQueue()
                                 } catch (err) {
                                   console.error('Failed to leave queue:', err)
+                                  toast.error('Failed to leave queue')
                                 }
                               }}
                             >
@@ -910,6 +911,7 @@ export default function RoomClient({
                                 await queueChannel.joinQueue()
                               } catch (err) {
                                 console.error('Failed to join queue:', err)
+                                toast.error('Failed to join queue')
                               }
                             }}
                           >
@@ -952,7 +954,7 @@ export default function RoomClient({
                             className={`flex items-center gap-3 p-2 border-2 ${
                               entry.userId === currentUserId
                                 ? 'border-yellow-500/50 bg-yellow-500/5'
-                                : 'border-white/10'
+                                : 'border-white/30'
                             }`}
                           >
                             <span className="text-xs debate-mono text-gray-500 w-6 text-right">
@@ -978,7 +980,7 @@ export default function RoomClient({
               {/* Audience (watching, not in queue) */}
               <div>
                 <Card className="debate-card border-2">
-                  <CardHeader className="border-b-2 border-white/20">
+                  <CardHeader className="border-b-2 border-white/30">
                     <CardTitle className="debate-title flex items-center text-white">
                       <Users className="w-4 h-4 mr-2" />
                       AUDIENCE ({audience.length} / {session.audienceCapacity})
@@ -1074,7 +1076,7 @@ export default function RoomClient({
                               className={`text-center p-3 border-2 transition-colors ${
                                 queueEntry
                                   ? 'border-yellow-500/40 bg-yellow-500/5'
-                                  : 'border-white/20 hover:border-red-600'
+                                  : 'border-white/30 hover:border-red-600'
                               }`}
                             >
                               <div className="w-12 h-12 bg-gray-600 text-white font-bold text-sm flex items-center justify-center mx-auto mb-2 border-2 border-black">
@@ -1102,7 +1104,7 @@ export default function RoomClient({
             <div className="col-span-4 space-y-4">
               {/* Moderator Controls */}
               <Card className="debate-card border-2">
-                <CardHeader className="border-b-2 border-white/20">
+                <CardHeader className="border-b-2 border-white/30">
                   <CardTitle className="debate-title flex items-center text-white">
                     <Shield className="w-4 h-4 mr-2" />
                     MODERATOR
@@ -1185,7 +1187,7 @@ export default function RoomClient({
 
               {/* Live Transcript */}
               <Card className="debate-card border-2 flex-1">
-                <CardHeader className="border-b-2 border-white/20">
+                <CardHeader className="border-b-2 border-white/30">
                   <div className="flex items-center justify-between gap-3">
                     <CardTitle className="debate-title flex items-center text-white">
                       <MessageSquare className="w-4 h-4 mr-2" />
@@ -1243,7 +1245,7 @@ export default function RoomClient({
 
               {/* AI Claim Detection */}
               <Card className="debate-card border-2 flex-1">
-                <CardHeader className="border-b-2 border-white/20">
+                <CardHeader className="border-b-2 border-white/30">
                   <div className="flex items-center justify-between gap-3">
                     <CardTitle className="debate-title flex items-center text-white">
                       <Sparkles className="w-4 h-4 mr-2" />
@@ -1315,7 +1317,7 @@ export default function RoomClient({
 
               {/* Participation */}
               <Card className="debate-card border-2">
-                <CardHeader className="border-b-2 border-white/20">
+                <CardHeader className="border-b-2 border-white/30">
                   <CardTitle className="debate-title flex items-center text-white">
                     <BarChart3 className="w-4 h-4 mr-2" />
                     PARTICIPANTS ({session.participatesIns.length})
