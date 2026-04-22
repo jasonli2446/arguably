@@ -8,6 +8,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    user: { findUnique: vi.fn() },
     session: { findUnique: vi.fn() },
     turnLog: { findMany: vi.fn() },
     transcript: { findMany: vi.fn() },
@@ -31,6 +32,13 @@ function mockAuth(userId: string | null) {
       }),
     },
   })
+  if (userId) {
+    ;(prisma.user.findUnique as MockInstance).mockResolvedValue({
+      banned_at: null,
+      suspended_until: null,
+      deleted_at: null,
+    })
+  }
 }
 
 function mockEndedSession() {
