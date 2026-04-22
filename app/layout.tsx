@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import AuthSync from "@/components/AuthSync";
+import { UserProvider } from "@/components/UserContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,8 +15,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <AuthSync />
-        {children}
+        <UserProvider>
+          {children}
+        </UserProvider>
       </body>
     </html>
   );

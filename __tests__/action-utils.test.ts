@@ -7,6 +7,9 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    user: {
+      findUnique: vi.fn(),
+    },
     session: {
       findUnique: vi.fn(),
     },
@@ -46,6 +49,11 @@ describe('requireAuth', () => {
   it('returns user when authenticated', async () => {
     const mockUser = { id: MOCK_USER_ID }
     mockAuth(mockUser)
+    ;(prisma.user.findUnique as MockInstance).mockResolvedValue({
+      banned_at: null,
+      suspended_until: null,
+      deleted_at: null,
+    })
     const result = await requireAuth()
     expect(result).toEqual(mockUser)
   })
@@ -63,12 +71,22 @@ describe('requireHostOrModerator', () => {
 
   it('throws "Session not found" when session does not exist', async () => {
     mockAuth({ id: MOCK_USER_ID })
+    ;(prisma.user.findUnique as MockInstance).mockResolvedValue({
+      banned_at: null,
+      suspended_until: null,
+      deleted_at: null,
+    })
     ;(prisma.session.findUnique as MockInstance).mockResolvedValue(null)
     await expect(requireHostOrModerator(MOCK_SESSION_ID)).rejects.toThrow('Session not found')
   })
 
   it('throws "Not authorized" when user is neither host nor moderator', async () => {
     mockAuth({ id: MOCK_USER_ID })
+    ;(prisma.user.findUnique as MockInstance).mockResolvedValue({
+      banned_at: null,
+      suspended_until: null,
+      deleted_at: null,
+    })
     ;(prisma.session.findUnique as MockInstance).mockResolvedValue({
       id: MOCK_SESSION_ID,
       host_id: 'other-user-1',
@@ -85,6 +103,11 @@ describe('requireHostOrModerator', () => {
       moderator_id: null,
     }
     mockAuth(mockUser)
+    ;(prisma.user.findUnique as MockInstance).mockResolvedValue({
+      banned_at: null,
+      suspended_until: null,
+      deleted_at: null,
+    })
     ;(prisma.session.findUnique as MockInstance).mockResolvedValue(mockSession)
 
     const result = await requireHostOrModerator(MOCK_SESSION_ID)
@@ -103,6 +126,11 @@ describe('requireHostOrModerator', () => {
       moderator_id: MOCK_USER_ID,
     }
     mockAuth(mockUser)
+    ;(prisma.user.findUnique as MockInstance).mockResolvedValue({
+      banned_at: null,
+      suspended_until: null,
+      deleted_at: null,
+    })
     ;(prisma.session.findUnique as MockInstance).mockResolvedValue(mockSession)
 
     const result = await requireHostOrModerator(MOCK_SESSION_ID)
@@ -126,12 +154,22 @@ describe('requireParticipant', () => {
 
   it('throws "Not a participant" when no participation record', async () => {
     mockAuth({ id: MOCK_USER_ID })
+    ;(prisma.user.findUnique as MockInstance).mockResolvedValue({
+      banned_at: null,
+      suspended_until: null,
+      deleted_at: null,
+    })
     ;(prisma.participatesIn.findUnique as MockInstance).mockResolvedValue(null)
     await expect(requireParticipant(MOCK_SESSION_ID)).rejects.toThrow('Not a participant in this session')
   })
 
   it('throws "Not a participant" when participation has left_at set', async () => {
     mockAuth({ id: MOCK_USER_ID })
+    ;(prisma.user.findUnique as MockInstance).mockResolvedValue({
+      banned_at: null,
+      suspended_until: null,
+      deleted_at: null,
+    })
     ;(prisma.participatesIn.findUnique as MockInstance).mockResolvedValue({
       user_id: MOCK_USER_ID,
       session_id: MOCK_SESSION_ID,
@@ -143,6 +181,11 @@ describe('requireParticipant', () => {
   it('returns user when active participant', async () => {
     const mockUser = { id: MOCK_USER_ID }
     mockAuth(mockUser)
+    ;(prisma.user.findUnique as MockInstance).mockResolvedValue({
+      banned_at: null,
+      suspended_until: null,
+      deleted_at: null,
+    })
     ;(prisma.participatesIn.findUnique as MockInstance).mockResolvedValue({
       user_id: MOCK_USER_ID,
       session_id: MOCK_SESSION_ID,

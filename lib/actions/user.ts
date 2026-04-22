@@ -37,6 +37,8 @@ export async function ensureUserProfile() {
     })
 
     if (result.deleted_at) return null
+    if (result.banned_at) return null
+    if (result.suspended_until && result.suspended_until > new Date()) return null
     return result
 }
 

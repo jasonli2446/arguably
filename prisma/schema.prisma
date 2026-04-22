@@ -70,6 +70,12 @@ model User {
   bio        String?
   deleted_at DateTime?
 
+  // Ban / suspension
+  banned_at       DateTime?
+  ban_reason      String?
+  banned_by       String?   @db.Uuid
+  suspended_until DateTime?
+
   // User preferences stored as JSON (notifications, privacy, appearance, language)
   preferences Json?
 
@@ -85,6 +91,7 @@ model User {
   audience_queues    AudienceQueue[]
   team_assignments   TeamAssignment[]
   role_history       RoleHistory[]
+  audit_logs         AdminAuditLog[]  @relation("AdminAuditLogs")
 }
 
 model ParticipatesIn {
@@ -292,4 +299,32 @@ model TranscriptSegment {
 
   @@unique([session_id, speaker_id, chunk_index])
   @@index([session_id, started_at, created_at])
+}
+
+/// Single-row platform configuration managed by admins
+model PlatformConfig {
+  id                   String   @id @default("singleton")
+  default_turn_length  Int      @default(120)
+  default_audience_cap Int      @default(10)
+  max_turn_length      Int      @default(1800)
+  max_audience_cap     Int      @default(1000)
+  allow_new_sessions   Boolean  @default(true)
+  maintenance_message  String?
+  updated_at           DateTime @updatedAt
+}
+
+/// Audit trail for admin actions (bans, role changes, session force-ends, config updates)
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  admin_id    String   @db.Uuid
+  action      String
+  target_type String
+  target_id   String
+  details     Json?
+  created_at  DateTime @default(now())
+
+  admin User @relation("AdminAuditLogs", fields: [admin_id], references: [id])
+
+  @@index([admin_id])
+  @@index([created_at])
 }
