@@ -151,6 +151,18 @@ export async function joinSession(sessionId: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Not authenticated")
 
+    // Ensure the User row exists before creating a FK-dependent ParticipatesIn.
+    // New accounts trigger this before ensureUserProfile (client effect) has run.
+    await prisma.user.upsert({
+        where: { id: user.id },
+        create: {
+            id: user.id,
+            username: `${(user.email?.split("@")[0] ?? "user").slice(0, 16)}-${user.id.slice(0, 8)}`,
+            email: user.email ?? null,
+        },
+        update: {},
+    })
+
     const session = await prisma.session.findUnique({
         where: { id: sessionId },
         select: {
