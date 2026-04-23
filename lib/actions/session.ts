@@ -80,6 +80,12 @@ export async function createSession(formData: {
                     session_role: SessionRole.HOST,
                 },
             },
+            team_assignments: {
+                create: {
+                    user_id: user.id,
+                    team: formData.type === SessionType.PANEL ? 'panel' : 'proponent',
+                },
+            },
         },
     })
 
@@ -137,6 +143,9 @@ export async function getSessionByCode(code: string) {
                 include: {
                     user: { select: { id: true, username: true, realname: true } },
                 },
+            },
+            team_assignments: {
+                select: { user_id: true, team: true },
             },
         },
         
@@ -506,14 +515,14 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
   }
 }
 
-export async function promoteToDebater(sessionId: string, targetUserId: string) {
+export async function promoteToDebater(sessionId: string, targetUserId: string, team?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { host_id: true, moderator_id: true, status: true },
+    select: { host_id: true, moderator_id: true, status: true, type: true },
   })
   if (!session) throw new Error("Session not found")
   if (session.host_id !== user.id && session.moderator_id !== user.id) {
@@ -524,14 +533,34 @@ export async function promoteToDebater(sessionId: string, targetUserId: string) 
   }
   if (targetUserId === user.id) throw new Error("Cannot promote yourself")
 
-  await prisma.participatesIn.update({
-    where: {
-      user_id_session_id: {
-        user_id: targetUserId,
-        session_id: sessionId,
+  const resolvedTeam = session.type === SessionType.PANEL ? 'panel' : (team ?? 'opponent')
+
+  await prisma.$transaction(async (tx) => {
+    await tx.participatesIn.update({
+      where: {
+        user_id_session_id: {
+          user_id: targetUserId,
+          session_id: sessionId,
+        },
       },
-    },
-    data: { session_role: SessionRole.DEBATER },
+      data: { session_role: SessionRole.DEBATER },
+    })
+
+    await tx.teamAssignment.upsert({
+      where: { session_id_user_id: { session_id: sessionId, user_id: targetUserId } },
+      create: { session_id: sessionId, user_id: targetUserId, team: resolvedTeam },
+      update: { team: resolvedTeam },
+    })
+
+    await tx.roleHistory.create({
+      data: {
+        session_id: sessionId,
+        user_id: targetUserId,
+        old_role: SessionRole.AUDIENCE,
+        new_role: SessionRole.DEBATER,
+        reason: `Promoted by moderator/host (${resolvedTeam})`,
+      },
+    })
   })
 }
 

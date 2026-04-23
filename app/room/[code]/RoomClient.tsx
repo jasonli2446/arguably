@@ -68,6 +68,7 @@ interface SessionData {
     sessionRole: SessionRole
     user: { id: string; username: string; realname: string | null }
   }[]
+  teamAssignments: { userId: string; team: string }[]
   transcriptSegments: TranscriptSegmentView[]
   detectedClaims: ClaimView[]
 }
@@ -273,16 +274,20 @@ export default function RoomClient({
   const canUpgradeToDebater =
     currentRole === SessionRole.AUDIENCE && canJoinAsDebater
 
+  // Per-side counts from TeamAssignment (filtered to active participants in page.tsx)
+  const proponentCount = session.teamAssignments.filter(ta => ta.team === 'proponent').length
+  const opponentCount = session.teamAssignments.filter(ta => ta.team === 'opponent').length
+
   // Check proponent/opponent specific availability
   const proponentsFull =
     session.type !== SessionType.PANEL &&
     (session.debaterCapacityProponent ?? 0) > 0 &&
-    debaters.filter(d => d.sessionRole === SessionRole.DEBATER).length >= (session.debaterCapacityProponent ?? 0)
+    proponentCount >= (session.debaterCapacityProponent ?? 0)
 
   const opponentsFull =
     session.type !== SessionType.PANEL &&
     (session.debaterCapacityOpponent ?? 0) > 0 &&
-    debaters.filter(d => d.sessionRole === SessionRole.DEBATER).length >= totalDebaterCapacity
+    opponentCount >= (session.debaterCapacityOpponent ?? 0)
 
   // Use hook's timer when debate is active
   const displayTime =

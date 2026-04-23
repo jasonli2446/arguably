@@ -53,6 +53,13 @@ async function doPromoteFromQueue(
     })
   }
 
+  // Assign team (queue promotions are challengers/opponents by default)
+  await tx.teamAssignment.upsert({
+    where: { session_id_user_id: { session_id: sessionId, user_id: front.user_id } },
+    create: { session_id: sessionId, user_id: front.user_id, team: 'opponent' },
+    update: { team: 'opponent' },
+  })
+
   // Log role transition
   await tx.roleHistory.create({
     data: {
@@ -188,6 +195,11 @@ export async function promoteFromQueue(sessionId: string, userId?: string) {
             user_id: userId,
           },
         },
+      })
+      await tx.teamAssignment.upsert({
+        where: { session_id_user_id: { session_id: sessionId, user_id: userId } },
+        create: { session_id: sessionId, user_id: userId, team: 'opponent' },
+        update: { team: 'opponent' },
       })
       await tx.roleHistory.create({
         data: {

@@ -76,6 +76,13 @@ export default async function RoomPage({ params }: { params: Promise<{ code: str
         realname: p.user.realname ?? null,
       },
     })),
+    // Filter team assignments to only active participants (left_at: null already filtered in participates_ins)
+    teamAssignments: (() => {
+      const activeUserIds = new Set(session.participates_ins.map(p => p.user_id))
+      return session.team_assignments
+        .filter(ta => activeUserIds.has(ta.user_id))
+        .map(ta => ({ userId: ta.user_id, team: ta.team }))
+    })(),
     transcriptSegments,
     detectedClaims,
   }
