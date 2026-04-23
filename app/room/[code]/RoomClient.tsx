@@ -37,7 +37,6 @@ import type { ClaimView } from '@/lib/claims'
 import { useDebateChannel } from '@/hooks/useDebateChannel'
 import { useQueueChannel } from '@/hooks/useQueueChannel'
 import { useKickVoteChannel } from '@/hooks/useKickVoteChannel'
-import { createClient } from '@/lib/supabase/client'
 import VideoPanel from '@/components/VideoPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -140,7 +139,7 @@ export default function RoomClient({
     sessionId: session.id,
     currentUserId,
     localStream,
-    enabled: isDebater && session.status === SessionStatus.LIVE,
+    enabled: isDebater && session.status === SessionStatus.LIVE && debate.isMyTurn,
     audioMuted,
     initialSegments: session.transcriptSegments,
   })

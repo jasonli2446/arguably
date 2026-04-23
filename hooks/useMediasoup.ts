@@ -134,6 +134,7 @@ export function useMediasoup({
   const localStreamRef = useRef<MediaStream | null>(null)
   const peerIdRef = useRef<string | null>(null)
   const routerDataRef = useRef<RouterCapabilitiesResponse | null>(null)
+  const pendingProducersRef = useRef<string[]>([])
   const cleanedUpRef = useRef(false)
 
   const cleanup = useCallback(() => {
@@ -375,9 +376,18 @@ export function useMediasoup({
             }
 
             const prodData = (await request(socket, 'getProducers')) as GetProducersResponse
+            const alreadyConsuming = new Set(prodData.producers.map(p => p.producerId))
             for (const p of prodData.producers) {
               await consumeProducer(socket, recvTransport, p.producerId)
             }
+
+            // Drain any newProducer events that arrived before recv transport was ready
+            for (const pid of pendingProducersRef.current) {
+              if (!alreadyConsuming.has(pid)) {
+                await consumeProducer(socket, recvTransport, pid)
+              }
+            }
+            pendingProducersRef.current = []
 
             clearTimeout(connectionTimeout)
             setConnectionState('connected')
@@ -403,6 +413,9 @@ export function useMediasoup({
         socket.on('newProducer', async (data: NewProducerEvent) => {
           if (recvTransportRef.current) {
             await consumeProducer(socket, recvTransportRef.current, data.producerId)
+          } else {
+            // Buffer if recv transport isn't ready yet (connect handler still running)
+            pendingProducersRef.current.push(data.producerId)
           }
         })
 
