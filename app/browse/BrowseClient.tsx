@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import FloatingNav from '@/components/FloatingNav'
 import { useRouter } from 'next/navigation'
 import { joinSession } from '@/lib/actions/session'
-import { userStub } from '@/lib/utils'
 
 interface SessionData {
   id: string
@@ -229,7 +228,7 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
                       <CardDescription className="debate-mono text-sm text-gray-400 mt-2">
                         {TYPE_LABELS[session.type] || session.type}
                         <span className="mx-2">·</span>
-                        by {session.moderator?.username || userStub.username}
+                        by {session.host.realname || session.host.username}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
