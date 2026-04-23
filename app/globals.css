@@ -189,6 +189,10 @@ body {
   color: white;
 }
 
+.dark .debate-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
 .dark select.debate-input {
   border: 2px solid rgba(255, 255, 255, 0.3);
   background: rgb(17 24 39);
