@@ -108,7 +108,7 @@ export default function RoomClient({
 
   const isModeratorOrCreator = currentRole === SessionRole.MODERATOR || currentRole === SessionRole.HOST
   const isHost = currentRole === SessionRole.HOST
-  const isParticipant = currentRole !== null
+  const isParticipant = session.participatesIns.some(p => p.userId === currentUserId)
   const isDebater = currentRole === SessionRole.DEBATER || currentRole === SessionRole.HOST
 
   const {
@@ -529,7 +529,7 @@ export default function RoomClient({
 
   // Check if debate can start
   const canStartDebate = isExpertVsCrowd
-    ? debaters.length >= 1 && queueChannel.queue.length >= 1
+    ? debaters.length >= 1
     : session.type === SessionType.ONE_ON_ONE
       ? debaters.length === 2
       : session.type === SessionType.TEAM
@@ -1020,7 +1020,9 @@ export default function RoomClient({
                         ) : (
                           <Button
                             className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                            disabled={session.status !== SessionStatus.LIVE}
                             onClick={async () => {
+                              if (session.status !== SessionStatus.LIVE) return
                               try {
                                 await queueChannel.joinQueue()
                               } catch (err) {
@@ -1031,6 +1033,9 @@ export default function RoomClient({
                           >
                             <Hand className="w-4 h-4 mr-2" />
                             {isExpertVsCrowd ? 'JOIN SPEAKER QUEUE' : 'JOIN QUEUE'}
+                            {session.status !== SessionStatus.LIVE && (
+                              <span className="ml-1 text-xs opacity-70">(opens when live)</span>
+                            )}
                           </Button>
                         )}
                       </div>
@@ -1104,7 +1109,7 @@ export default function RoomClient({
                   <CardContent className="p-4">
                     {/* Direct debater upgrade (non-Expert vs Crowd, non-queue path)
                         Hidden during WAITING — the center waiting area has the primary CTA */}
-                    {canUpgradeToDebater && !isExpertVsCrowd && session.status !== SessionStatus.WAITING && (
+                    {canUpgradeToDebater && !isExpertVsCrowd && isParticipant && session.status !== SessionStatus.WAITING && (
                       <div className="mb-4">
                         {session.type === SessionType.PANEL ? (
                           <Button
