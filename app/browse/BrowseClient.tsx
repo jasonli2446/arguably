@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Users, Clock, Zap, TrendingUp, Filter, Search } from 'lucide-react'
+import { Users, Filter, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import FloatingNav from '@/components/FloatingNav'
@@ -60,9 +60,6 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
     if (statusFilter.length > 0 && !statusFilter.includes(s.status)) return false
     return true
   })
-
-  const liveCount = sessions.filter((s) => s.status === 'LIVE').length
-  const totalParticipants = sessions.reduce((sum, s) => sum + s._count.participatesIns, 0)
 
   async function handleJoin(session: SessionData) {
     setJoiningId(session.id)
@@ -162,33 +159,6 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
               <button onClick={() => setJoinError(null)} className="text-red-400 hover:text-red-300 text-sm debate-mono ml-4">DISMISS</button>
             </div>
           )}
-
-          {/* Stats Bar */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12"
-          >
-            {[
-              { label: "LIVE DEBATES", value: String(liveCount), icon: Zap },
-              { label: "PARTICIPANTS", value: String(totalParticipants), icon: Users },
-              { label: "TOTAL ROOMS", value: String(sessions.length), icon: Clock },
-              { label: "FORMATS", value: "4", icon: TrendingUp },
-            ].map((stat, index) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 + index * 0.1 }}
-                className="bg-gray-900 border-2 border-white/30 p-4 text-center"
-              >
-                <stat.icon className="w-6 h-6 text-red-400 mx-auto mb-2" />
-                <div className="text-3xl font-black text-white mb-1">{stat.value}</div>
-                <div className="text-xs debate-mono text-gray-400">{stat.label}</div>
-              </motion.div>
-            ))}
-          </motion.div>
 
           {/* Debates Grid */}
           {filtered.length === 0 ? (
