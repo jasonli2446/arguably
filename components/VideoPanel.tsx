@@ -6,10 +6,11 @@ interface VideoPanelProps {
   stream: MediaStream | null
   muted: boolean
   label: string
+  mirror?: boolean
   className?: string
 }
 
-export default function VideoPanel({ stream, muted, label, className = '' }: VideoPanelProps) {
+export default function VideoPanel({ stream, muted, label, mirror = false, className = '' }: VideoPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -26,7 +27,7 @@ export default function VideoPanel({ stream, muted, label, className = '' }: Vid
           autoPlay
           playsInline
           muted={muted}
-          className="w-full h-full object-cover bg-gray-900"
+          className={`w-full h-full object-cover bg-gray-900${mirror ? ' -scale-x-100' : ''}`}
         />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center">

@@ -918,7 +918,7 @@ export default function RoomClient({
                               ) : connectionState === 'connected' ? (
                                 <div className="grid grid-cols-2 gap-2">
                                   <div className="min-h-[200px]">
-                                    <VideoPanel stream={localStream} muted label="You" />
+                                    <VideoPanel stream={localStream} muted mirror label="You" />
                                   </div>
                                   {Array.from(remoteStreams.entries())
                                     .filter(([, rs]) => rs.kind === 'video')

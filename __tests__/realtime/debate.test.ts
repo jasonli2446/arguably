@@ -8,6 +8,7 @@ vi.mock('../../realtime/src/db', () => ({
   getSessionByCode: vi.fn().mockResolvedValue(null),
   getSessionCodeById: vi.fn().mockResolvedValue(null),
   validateDebaterIds: vi.fn().mockResolvedValue(true),
+  filterActiveDebaterIds: vi.fn().mockImplementation((_sid: string, ids: string[]) => Promise.resolve(ids)),
   isHostOrModerator: vi.fn().mockResolvedValue(true),
 }))
 
@@ -75,7 +76,7 @@ describe('debate engine', () => {
     // Re-establish default mock returns after clearAllMocks
     vi.mocked(db.persistDebateState).mockResolvedValue(undefined)
     vi.mocked(db.logTurnTransition).mockResolvedValue(undefined)
-    vi.mocked(db.validateDebaterIds).mockResolvedValue(true)
+    vi.mocked(db.filterActiveDebaterIds).mockImplementation((_sid: string, ids: string[]) => Promise.resolve(ids))
     vi.mocked(db.isHostOrModerator).mockResolvedValue(true)
     vi.mocked(db.loadAllActiveDebates).mockResolvedValue([])
     vi.mocked(db.loadDebateState).mockResolvedValue(null)
@@ -116,22 +117,24 @@ describe('debate engine', () => {
     })
 
     it('rejects < 2 debaters', async () => {
+      mockSession()
       const r = await startDebate(ROOM, [d2[0]], 60, 'ONE_ON_ONE', null, io)
       expect(r.success).toBe(false)
-      expect(r.error).toContain('At least 2')
+      expect(r.error).toContain('Not enough active debaters')
     })
 
     it('rejects ONE_ON_ONE with 3 debaters', async () => {
+      mockSession()
       const r = await startDebate(ROOM, d4.slice(0, 3), 60, 'ONE_ON_ONE', null, io)
       expect(r.success).toBe(false)
       expect(r.error).toContain('exactly 2')
     })
 
-    it('rejects PANEL with 2 debaters', async () => {
+    it('rejects PANEL with 1 debater', async () => {
       mockSession('PANEL')
-      const r = await startDebate(ROOM, d2, 60, 'PANEL', null, io)
+      const r = await startDebate(ROOM, [d2[0]], 60, 'PANEL', null, io)
       expect(r.success).toBe(false)
-      expect(r.error).toContain('3-6')
+      expect(r.error).toContain('Not enough active debaters')
     })
 
     it('rejects PANEL with 7 debaters', async () => {
@@ -147,11 +150,12 @@ describe('debate engine', () => {
       expect(r).toEqual({ success: false, error: 'Session not found' })
     })
 
-    it('rejects if debater IDs invalid', async () => {
+    it('rejects if no debaters are active participants', async () => {
       mockSession()
-      vi.mocked(db.validateDebaterIds).mockResolvedValue(false)
+      vi.mocked(db.filterActiveDebaterIds).mockResolvedValue([])
       const r = await startDebate(ROOM, d2, 60, 'ONE_ON_ONE', null, io)
-      expect(r).toEqual({ success: false, error: 'Invalid debater IDs' })
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('Not enough active debaters')
     })
 
     it('rejects if format mismatches session type', async () => {
