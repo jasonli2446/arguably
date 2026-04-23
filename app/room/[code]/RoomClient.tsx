@@ -106,7 +106,7 @@ export default function RoomClient({
 
   const isModeratorOrCreator = currentRole === SessionRole.MODERATOR || currentRole === SessionRole.HOST
   const isHost = currentRole === SessionRole.HOST
-  const isParticipant = currentRole !== null
+  const isParticipant = session.participatesIns.some(p => p.userId === currentUserId)
   const isDebater = currentRole === SessionRole.DEBATER || currentRole === SessionRole.HOST
 
   const {
@@ -917,7 +917,7 @@ export default function RoomClient({
                   </CardHeader>
                   <CardContent className="p-4">
                     {/* Queue actions for audience members */}
-                    {isAudience && session.status === SessionStatus.LIVE && (
+                    {isAudience && (
                       <div className="mb-4">
                         {queueChannel.isInQueue ? (
                           <div className="space-y-2">
@@ -943,7 +943,9 @@ export default function RoomClient({
                         ) : (
                           <Button
                             className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                            disabled={session.status !== SessionStatus.LIVE}
                             onClick={async () => {
+                              if (session.status !== SessionStatus.LIVE) return
                               try {
                                 await queueChannel.joinQueue()
                               } catch (err) {
@@ -953,6 +955,7 @@ export default function RoomClient({
                           >
                             <Hand className="w-4 h-4 mr-2" />
                             {isExpertVsCrowd ? 'JOIN SPEAKER QUEUE' : 'JOIN QUEUE'}
+                            {session.status !== SessionStatus.LIVE && ' (opens when live)'}
                           </Button>
                         )}
                       </div>
