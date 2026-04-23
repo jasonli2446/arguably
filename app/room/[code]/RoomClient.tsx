@@ -214,9 +214,14 @@ export default function RoomClient({
           table: 'ParticipatesIn',
           filter: `session_id=eq.${session.id}`,
         },
-        () => { router.refresh() },
+        (payload) => {
+          console.log('[Realtime] ParticipatesIn change:', payload.eventType, payload)
+          router.refresh()
+        },
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        console.log('[Realtime] subscription status:', status, err ?? '')
+      })
     return () => { supabase.removeChannel(channel) }
   }, [session.id, router])
 
