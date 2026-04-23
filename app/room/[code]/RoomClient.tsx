@@ -146,10 +146,13 @@ export default function RoomClient({
     initialSegments: session.transcriptSegments,
   })
 
-  const transcriptEndRef = useRef<HTMLDivElement>(null)
+  const transcriptContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = transcriptContainerRef.current
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
   }, [transcript.segments])
 
   const { claims } = useLiveClaims({
@@ -157,10 +160,13 @@ export default function RoomClient({
     initialClaims: session.detectedClaims,
   })
 
-  const claimsEndRef = useRef<HTMLDivElement>(null)
+  const claimsContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    claimsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = claimsContainerRef.current
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
   }, [claims])
 
   const queueChannel = useQueueChannel({
@@ -362,6 +368,8 @@ export default function RoomClient({
         await debate.startDebate([expert], session.turnLength, session.type)
       } else if (debaterList.length >= 2) {
         await debate.startDebate(debaterList, session.turnLength, session.type)
+      } else {
+        throw new Error('Not enough debaters to start')
       }
 
       await updateSessionStatus(session.id, SessionStatus.LIVE)
@@ -1314,7 +1322,7 @@ export default function RoomClient({
                     </span>
                   </div>
                 </CardHeader>
-                <CardContent className="p-4 h-64 overflow-y-auto">
+                <CardContent ref={transcriptContainerRef} className="p-4 h-64 overflow-y-auto">
                   {transcript.segments.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center">
                       <p className="text-gray-500 debate-mono text-sm">{transcriptStatusMessage}</p>
@@ -1345,7 +1353,6 @@ export default function RoomClient({
                           </p>
                         </div>
                       ))}
-                      <div ref={transcriptEndRef} />
                     </div>
                   )}
                 </CardContent>
@@ -1364,7 +1371,7 @@ export default function RoomClient({
                     </span>
                   </div>
                 </CardHeader>
-                <CardContent className="p-4 h-64 overflow-y-auto">
+                <CardContent ref={claimsContainerRef} className="p-4 h-64 overflow-y-auto">
                   {claims.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center">
                       <p className="text-gray-500 debate-mono text-sm">No claims detected yet</p>
@@ -1412,7 +1419,6 @@ export default function RoomClient({
                           )}
                         </div>
                       ))}
-                      <div ref={claimsEndRef} />
                     </div>
                   )}
                 </CardContent>
