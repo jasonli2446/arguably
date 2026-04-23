@@ -118,7 +118,8 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
               <input
                 type="text"
                 placeholder="SEARCH DEBATES..."
-                className="debate-input w-full pl-12"
+                className="debate-input w-full"
+                style={{ paddingLeft: '3rem' }}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
