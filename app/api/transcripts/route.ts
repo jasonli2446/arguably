@@ -101,6 +101,8 @@ export async function POST(request: Request) {
   const upstreamForm = new FormData()
   upstreamForm.append("model", model)
   upstreamForm.append("file", audioFile, audioFile.name || `chunk-${chunkIndex}.webm`)
+  upstreamForm.append("language", "en")
+  upstreamForm.append("prompt", "This is a live debate discussion. Speakers present arguments, counterarguments, and evidence on various topics.")
 
   const upstreamResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",

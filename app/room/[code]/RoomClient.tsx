@@ -45,7 +45,6 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { userStub, getInitials, formatTime } from '@/lib/utils'
 import { leaveSession, updateSessionStatus, joinSession, joinSessionAsDebater, kickParticipant, assignModerator, promoteToDebater } from '@/lib/actions/session'
 import { promoteFromQueue } from '@/lib/actions/queue'
-import { extendTurn } from '@/lib/actions/debate'
 import { useRouter } from 'next/navigation'
 import { SessionRole, SessionStatus, SessionType } from '@/lib/generated/prisma'
 
@@ -141,7 +140,7 @@ export default function RoomClient({
     sessionId: session.id,
     currentUserId,
     localStream,
-    enabled: isDebater && session.status !== SessionStatus.ENDED,
+    enabled: isDebater && session.status === SessionStatus.LIVE,
     audioMuted,
     initialSegments: session.transcriptSegments,
   })
@@ -428,7 +427,7 @@ export default function RoomClient({
   async function handleExtendTurn() {
     setIsExtendingTurn(true)
     try {
-      await extendTurn(session.id, 30)
+      await debate.extendTurn(30)
       toast.success('Turn extended by 30s')
     } catch (err) {
       console.error('Failed to extend turn:', err)

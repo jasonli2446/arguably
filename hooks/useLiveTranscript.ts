@@ -13,7 +13,7 @@ interface UseLiveTranscriptOptions {
   initialSegments: TranscriptSegmentView[]
 }
 
-const TRANSCRIPT_CHUNK_MS = 4000
+const TRANSCRIPT_CHUNK_MS = 6000
 
 function sortSegments(segments: TranscriptSegmentView[]) {
   return [...segments].sort((a, b) => {

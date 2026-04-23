@@ -152,6 +152,7 @@ export interface PauseDebateRequest { roomCode: string; }
 export interface ResumeDebateRequest { roomCode: string; }
 export interface EndDebateRequest { roomCode: string; }
 export interface GetDebateStateRequest { roomCode: string; }
+export interface ExtendTurnRequest { roomCode: string; extraSeconds: number; }
 
 export interface TurnChangedPayload { version: number; currentIndex: number; debaterOrder: DebateParticipant[]; turnStartedAt: number; turnLength: number; phase: DebatePhase; }
 export interface TurnExpiringPayload { version: number; expiredUserId: string; }
