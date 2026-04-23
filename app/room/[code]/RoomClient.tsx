@@ -68,6 +68,7 @@ interface SessionData {
     sessionRole: SessionRole
     user: { id: string; username: string; realname: string | null }
   }[]
+  teamAssignments: { userId: string; team: string }[]
   transcriptSegments: TranscriptSegmentView[]
   detectedClaims: ClaimView[]
 }
@@ -102,6 +103,7 @@ export default function RoomClient({
     type: 'kick' | 'end' | 'moderator' | 'promote'
     targetUserId?: string
     targetName?: string
+    team?: string
   } | null>(null)
 
   const isModeratorOrCreator = currentRole === SessionRole.MODERATOR || currentRole === SessionRole.HOST
@@ -144,10 +146,13 @@ export default function RoomClient({
     initialSegments: session.transcriptSegments,
   })
 
-  const transcriptEndRef = useRef<HTMLDivElement>(null)
+  const transcriptContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = transcriptContainerRef.current
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
   }, [transcript.segments])
 
   const { claims } = useLiveClaims({
@@ -155,10 +160,13 @@ export default function RoomClient({
     initialClaims: session.detectedClaims,
   })
 
-  const claimsEndRef = useRef<HTMLDivElement>(null)
+  const claimsContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    claimsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = claimsContainerRef.current
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
   }, [claims])
 
   const queueChannel = useQueueChannel({
@@ -273,16 +281,20 @@ export default function RoomClient({
   const canUpgradeToDebater =
     currentRole === SessionRole.AUDIENCE && canJoinAsDebater
 
+  // Per-side counts from TeamAssignment (filtered to active participants in page.tsx)
+  const proponentCount = session.teamAssignments.filter(ta => ta.team === 'proponent').length
+  const opponentCount = session.teamAssignments.filter(ta => ta.team === 'opponent').length
+
   // Check proponent/opponent specific availability
   const proponentsFull =
     session.type !== SessionType.PANEL &&
     (session.debaterCapacityProponent ?? 0) > 0 &&
-    debaters.filter(d => d.sessionRole === SessionRole.DEBATER).length >= (session.debaterCapacityProponent ?? 0)
+    proponentCount >= (session.debaterCapacityProponent ?? 0)
 
   const opponentsFull =
     session.type !== SessionType.PANEL &&
     (session.debaterCapacityOpponent ?? 0) > 0 &&
-    debaters.filter(d => d.sessionRole === SessionRole.DEBATER).length >= totalDebaterCapacity
+    opponentCount >= (session.debaterCapacityOpponent ?? 0)
 
   // Use hook's timer when debate is active
   const displayTime =
@@ -356,6 +368,8 @@ export default function RoomClient({
         await debate.startDebate([expert], session.turnLength, session.type)
       } else if (debaterList.length >= 2) {
         await debate.startDebate(debaterList, session.turnLength, session.type)
+      } else {
+        throw new Error('Not enough debaters to start')
       }
 
       await updateSessionStatus(session.id, SessionStatus.LIVE)
@@ -439,10 +453,10 @@ export default function RoomClient({
     }
   }
 
-  async function handlePromote(userId: string) {
+  async function handlePromote(userId: string, team?: string) {
     setIsPromoting(userId)
     try {
-      await promoteToDebater(session.id, userId)
+      await promoteToDebater(session.id, userId, team)
       toast.success('Participant promoted to debater')
       await debate.broadcastPromote(userId).catch(() => {})
       router.refresh()
@@ -481,7 +495,7 @@ export default function RoomClient({
         if (targetUserId) await handleAssignModerator(targetUserId)
         break
       case 'promote':
-        if (targetUserId) await handlePromote(targetUserId)
+        if (targetUserId) await handlePromote(targetUserId, confirmDialog.team)
         break
     }
   }
@@ -493,13 +507,24 @@ export default function RoomClient({
   const isDebateLive = debate.debateStatus === 'live' || debate.debateStatus === 'paused'
   const statusDot = isDebateLive ? 'bg-red-600 animate-pulse' : 'bg-gray-500'
 
-  // Get debater capacity message
+  // Get debater capacity message (format-aware)
   const getDebaterCapacityMessage = () => {
-    if (session.type === SessionType.PANEL) {
-      return `Need ${(session.debaterCapacityPanel ?? 0) - debaters.length} more panelist${(session.debaterCapacityPanel ?? 0) - debaters.length === 1 ? '' : 's'}`
-    } else {
-      return `Need ${totalDebaterCapacity - debaters.length} more debater${totalDebaterCapacity - debaters.length === 1 ? '' : 's'}`
+    if (isExpertVsCrowd) {
+      if (queueChannel.queue.length === 0) {
+        return 'Waiting for a challenger to join the queue'
+      }
+      return `${queueChannel.queue.length} challenger${queueChannel.queue.length === 1 ? '' : 's'} in queue — ready to start`
     }
+    if (session.type === SessionType.PANEL) {
+      const needed = (session.debaterCapacityPanel ?? 0) - debaters.length
+      return needed > 0
+        ? `Need ${needed} more panelist${needed === 1 ? '' : 's'}`
+        : 'Panel is full — ready to start'
+    }
+    const needed = totalDebaterCapacity - debaters.length
+    return needed > 0
+      ? `Need ${needed} more debater${needed === 1 ? '' : 's'}`
+      : 'All debater slots filled — ready to start'
   }
 
   // Check if debate can start
@@ -507,7 +532,30 @@ export default function RoomClient({
     ? debaters.length >= 1
     : session.type === SessionType.ONE_ON_ONE
       ? debaters.length === 2
-      : debaters.length >= 2
+      : session.type === SessionType.TEAM
+        ? proponentCount >= 1 && opponentCount >= 1
+        : debaters.length >= 2
+
+  // Explain why Start Debate is disabled
+  const getStartBlockedReason = () => {
+    if (isExpertVsCrowd) {
+      if (debaters.length < 1) return 'The host must be present to start'
+      if (queueChannel.queue.length < 1) return 'At least 1 challenger must be in the queue'
+    }
+    if (session.type === SessionType.ONE_ON_ONE) {
+      return `Need exactly 2 debaters (have ${debaters.length})`
+    }
+    if (session.type === SessionType.TEAM) {
+      if (proponentCount < 1 && opponentCount < 1) return 'Need at least 1 debater per side'
+      if (proponentCount < 1) return 'Need at least 1 proponent'
+      if (opponentCount < 1) return 'Need at least 1 opponent'
+      return `Need at least 1 debater per side`
+    }
+    if (session.type === SessionType.PANEL) {
+      return `Need at least 2 panelists (have ${debaters.length})`
+    }
+    return `Need at least 2 debaters (have ${debaters.length})`
+  }
 
   // Timer color based on remaining time
   const timerColorClass = displayTime <= 10
@@ -546,7 +594,9 @@ export default function RoomClient({
     },
     promote: {
       title: 'PROMOTE TO DEBATER',
-      description: `Promote ${confirmDialog.targetName} from audience to debater?`,
+      description: confirmDialog.team
+        ? `Promote ${confirmDialog.targetName} to ${confirmDialog.team}?`
+        : `Promote ${confirmDialog.targetName} from audience to debater?`,
       confirmLabel: 'PROMOTE',
       variant: 'default' as const,
     },
@@ -556,7 +606,7 @@ export default function RoomClient({
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
       <div className="debate-texture fixed inset-0" />
 
-      <header className="relative z-10 border-b-2 border-white/20 bg-gray-900/90 backdrop-blur-sm">
+      <header className="relative z-10 border-b-2 border-white/30 bg-gray-900/90 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -608,7 +658,7 @@ export default function RoomClient({
 
               <div className="min-h-[400px]">
                 <Card className="debate-card border-2">
-                  <CardHeader className="border-b-2 border-white/20">
+                  <CardHeader className="border-b-2 border-white/30">
                     <div className="flex items-center justify-between">
                       <CardTitle className="debate-title flex items-center text-white">
                         <div className={`w-3 h-3 rounded-full mr-3 ${statusDot}`} />
@@ -635,26 +685,85 @@ export default function RoomClient({
                           <p className="text-gray-400 debate-mono mb-6">
                             {session.participatesIns.length} / {totalDebaterCapacity + session.audienceCapacity + 1} joined
                           </p>
-                          {debaters.length < totalDebaterCapacity && (
+                          {(debaters.length < totalDebaterCapacity || isExpertVsCrowd) && (
                             <p className="text-yellow-400 debate-mono text-sm mb-4">
                               {getDebaterCapacityMessage()}
                             </p>
                           )}
-                          {isModeratorOrCreator && (
-                            <Button
-                              className="debate-button bg-red-600 text-white border-red-700"
-                              onClick={handleStartSession}
-                              disabled={!canStartDebate || isStarting}
-                            >
-                              {isStarting ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  STARTING...
-                                </>
+                          {/* Prominent "Become a Debater" CTA for audience members during WAITING */}
+                          {canUpgradeToDebater && !isExpertVsCrowd && (
+                            <div className="mb-4 w-full max-w-xs mx-auto">
+                              {session.type === SessionType.PANEL ? (
+                                <Button
+                                  className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                                  onClick={() => handleUpgradeToDebater(false)}
+                                  disabled={isJoining}
+                                >
+                                  <Swords className="w-4 h-4 mr-2" />
+                                  {isJoining ? 'JOINING...' : 'JOIN AS PANELIST'}
+                                </Button>
+                              ) : !showDebaterOptions ? (
+                                <Button
+                                  className="debate-button bg-yellow-500 text-black border-yellow-600 w-full font-bold"
+                                  onClick={() => setShowDebaterOptions(true)}
+                                  disabled={isJoining}
+                                >
+                                  <Swords className="w-4 h-4 mr-2" />
+                                  {isJoining ? 'JOINING...' : 'BECOME A DEBATER'}
+                                </Button>
                               ) : (
-                                'START DEBATE'
+                                <div className="space-y-2">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <Button
+                                      className="debate-button bg-red-600 text-white border-red-700 font-bold text-sm"
+                                      onClick={() => handleUpgradeToDebater(true)}
+                                      disabled={isJoining || proponentsFull}
+                                    >
+                                      {proponentsFull ? 'PROPONENT FULL' : 'JOIN AS PROPONENT'}
+                                    </Button>
+                                    <Button
+                                      className="debate-button bg-blue-600 text-white border-blue-700 font-bold text-sm"
+                                      onClick={() => handleUpgradeToDebater(false)}
+                                      disabled={isJoining || opponentsFull}
+                                    >
+                                      {opponentsFull ? 'OPPONENT FULL' : 'JOIN AS OPPONENT'}
+                                    </Button>
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="debate-button w-full text-xs"
+                                    onClick={() => setShowDebaterOptions(false)}
+                                    disabled={isJoining}
+                                  >
+                                    CANCEL
+                                  </Button>
+                                </div>
                               )}
-                            </Button>
+                            </div>
+                          )}
+                          {isModeratorOrCreator && (
+                            <div className="text-center">
+                              <Button
+                                className="debate-button bg-red-600 text-white border-red-700"
+                                onClick={handleStartSession}
+                                disabled={!canStartDebate || isStarting}
+                              >
+                                {isStarting ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    STARTING...
+                                  </>
+                                ) : (
+                                  'START DEBATE'
+                                )}
+                              </Button>
+                              {!canStartDebate && (
+                                <p className="text-red-400/70 debate-mono text-xs mt-2">
+                                  {getStartBlockedReason()}
+                                </p>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -674,7 +783,7 @@ export default function RoomClient({
                                   className={`flex flex-col p-3 border-2 transition-all ${
                                     isSpeaking
                                       ? 'border-yellow-400 bg-yellow-400/10 shadow-[0_0_15px_rgba(250,204,21,0.3)]'
-                                      : 'border-white/20 opacity-60'
+                                      : 'border-white/30 opacity-60'
                                   }`}
                                 >
                                   <div className="flex items-center space-x-3">
@@ -712,7 +821,7 @@ export default function RoomClient({
                                   </div>
                                   {/* Kick vote UI */}
                                   {canVoteToKick && voteState && (
-                                    <div className="mt-2 pt-2 border-t border-white/10">
+                                    <div className="mt-2 pt-2 border-t border-white/30">
                                       <div className="flex items-center justify-between mb-1">
                                         <span className="text-xs debate-mono text-gray-400">
                                           {voteState.voteCount} / {voteState.requiredVotes} votes to kick
@@ -757,7 +866,7 @@ export default function RoomClient({
                         ) : debaters.length > 0 ? (
                           <div className="flex items-center justify-center gap-6 flex-wrap">
                             {debaters.map((p, i) => (
-                              <div key={p.userId} className="flex items-center space-x-3 p-3 border-2 border-white/20">
+                              <div key={p.userId} className="flex items-center space-x-3 p-3 border-2 border-white/30">
                                 <div
                                   className={`w-14 h-14 border-2 border-black flex items-center justify-center text-white font-bold text-lg ${
                                     i === 0
@@ -861,10 +970,12 @@ export default function RoomClient({
                 </Card>
               </div>
 
-              {/* Speaker Queue */}
+              {/* Speaker Queue — visible for Expert vs Crowd always, other formats only during LIVE,
+                  or if someone is already in the queue */}
+              {(isExpertVsCrowd || session.status !== SessionStatus.WAITING || queueChannel.isInQueue || queueChannel.queue.length > 0) && (
               <div>
                 <Card className="debate-card border-2">
-                  <CardHeader className="border-b-2 border-white/20">
+                  <CardHeader className="border-b-2 border-white/30">
                     <CardTitle className="debate-title flex items-center justify-between text-white">
                       <div className="flex items-center">
                         <Hand className="w-4 h-4 mr-2" />
@@ -878,8 +989,11 @@ export default function RoomClient({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-4">
-                    {/* Queue actions for audience members */}
-                    {isAudience && (
+                    {/* Queue actions for audience members
+                        During WAITING: only show for Expert vs Crowd (queue needed to start debate)
+                        During LIVE: show for all formats (queue used for mid-debate promotion)
+                        Always show if user is already in queue (so they can leave) */}
+                    {isAudience && (queueChannel.isInQueue || isExpertVsCrowd || session.status === SessionStatus.LIVE) && (
                       <div className="mb-4">
                         {queueChannel.isInQueue ? (
                           <div className="space-y-2">
@@ -896,6 +1010,7 @@ export default function RoomClient({
                                   await queueChannel.leaveQueue()
                                 } catch (err) {
                                   console.error('Failed to leave queue:', err)
+                                  toast.error('Failed to leave queue')
                                 }
                               }}
                             >
@@ -912,6 +1027,7 @@ export default function RoomClient({
                                 await queueChannel.joinQueue()
                               } catch (err) {
                                 console.error('Failed to join queue:', err)
+                                toast.error('Failed to join queue')
                               }
                             }}
                           >
@@ -957,7 +1073,7 @@ export default function RoomClient({
                             className={`flex items-center gap-3 p-2 border-2 ${
                               entry.userId === currentUserId
                                 ? 'border-yellow-500/50 bg-yellow-500/5'
-                                : 'border-white/10'
+                                : 'border-white/30'
                             }`}
                           >
                             <span className="text-xs debate-mono text-gray-500 w-6 text-right">
@@ -979,19 +1095,21 @@ export default function RoomClient({
                   </CardContent>
                 </Card>
               </div>
+              )}
 
               {/* Audience (watching, not in queue) */}
               <div>
                 <Card className="debate-card border-2">
-                  <CardHeader className="border-b-2 border-white/20">
+                  <CardHeader className="border-b-2 border-white/30">
                     <CardTitle className="debate-title flex items-center text-white">
                       <Users className="w-4 h-4 mr-2" />
                       AUDIENCE ({audience.length} / {session.audienceCapacity})
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-4">
-                    {/* Direct debater upgrade (non-Expert vs Crowd, non-queue path) */}
-                    {canUpgradeToDebater && !isExpertVsCrowd && isParticipant && (
+                    {/* Direct debater upgrade (non-Expert vs Crowd, non-queue path)
+                        Hidden during WAITING — the center waiting area has the primary CTA */}
+                    {canUpgradeToDebater && !isExpertVsCrowd && isParticipant && session.status !== SessionStatus.WAITING && (
                       <div className="mb-4">
                         {session.type === SessionType.PANEL ? (
                           <Button
@@ -1079,7 +1197,7 @@ export default function RoomClient({
                               className={`text-center p-3 border-2 transition-colors ${
                                 queueEntry
                                   ? 'border-yellow-500/40 bg-yellow-500/5'
-                                  : 'border-white/20 hover:border-red-600'
+                                  : 'border-white/30 hover:border-red-600'
                               }`}
                             >
                               <div className="w-12 h-12 bg-gray-600 text-white font-bold text-sm flex items-center justify-center mx-auto mb-2 border-2 border-black">
@@ -1107,7 +1225,7 @@ export default function RoomClient({
             <div className="col-span-4 space-y-4">
               {/* Moderator Controls */}
               <Card className="debate-card border-2">
-                <CardHeader className="border-b-2 border-white/20">
+                <CardHeader className="border-b-2 border-white/30">
                   <CardTitle className="debate-title flex items-center text-white">
                     <Shield className="w-4 h-4 mr-2" />
                     MODERATOR
@@ -1190,7 +1308,7 @@ export default function RoomClient({
 
               {/* Live Transcript */}
               <Card className="debate-card border-2 flex-1">
-                <CardHeader className="border-b-2 border-white/20">
+                <CardHeader className="border-b-2 border-white/30">
                   <div className="flex items-center justify-between gap-3">
                     <CardTitle className="debate-title flex items-center text-white">
                       <MessageSquare className="w-4 h-4 mr-2" />
@@ -1209,7 +1327,7 @@ export default function RoomClient({
                     </span>
                   </div>
                 </CardHeader>
-                <CardContent className="p-4 h-64 overflow-y-auto">
+                <CardContent ref={transcriptContainerRef} className="p-4 h-64 overflow-y-auto">
                   {transcript.segments.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center">
                       <p className="text-gray-500 debate-mono text-sm">{transcriptStatusMessage}</p>
@@ -1240,7 +1358,6 @@ export default function RoomClient({
                           </p>
                         </div>
                       ))}
-                      <div ref={transcriptEndRef} />
                     </div>
                   )}
                 </CardContent>
@@ -1248,7 +1365,7 @@ export default function RoomClient({
 
               {/* AI Claim Detection */}
               <Card className="debate-card border-2 flex-1">
-                <CardHeader className="border-b-2 border-white/20">
+                <CardHeader className="border-b-2 border-white/30">
                   <div className="flex items-center justify-between gap-3">
                     <CardTitle className="debate-title flex items-center text-white">
                       <Sparkles className="w-4 h-4 mr-2" />
@@ -1259,7 +1376,7 @@ export default function RoomClient({
                     </span>
                   </div>
                 </CardHeader>
-                <CardContent className="p-4 h-64 overflow-y-auto">
+                <CardContent ref={claimsContainerRef} className="p-4 h-64 overflow-y-auto">
                   {claims.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center">
                       <p className="text-gray-500 debate-mono text-sm">No claims detected yet</p>
@@ -1307,7 +1424,6 @@ export default function RoomClient({
                           )}
                         </div>
                       ))}
-                      <div ref={claimsEndRef} />
                     </div>
                   )}
                 </CardContent>
@@ -1320,88 +1436,120 @@ export default function RoomClient({
 
               {/* Participation */}
               <Card className="debate-card border-2">
-                <CardHeader className="border-b-2 border-white/20">
+                <CardHeader className="border-b-2 border-white/30">
                   <CardTitle className="debate-title flex items-center text-white">
                     <BarChart3 className="w-4 h-4 mr-2" />
                     PARTICIPANTS ({session.participatesIns.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4">
-                  <div className="space-y-3">
-                    {session.participatesIns.map((person) => (
-                      <div key={person.userId} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            person.sessionRole === SessionRole.HOST ? 'bg-yellow-400' :
-                            person.sessionRole === SessionRole.MODERATOR ? 'bg-blue-400' :
-                            person.sessionRole === SessionRole.DEBATER ? 'bg-red-400' : 'bg-gray-400'
-                          }`} />
-                          <span className="text-sm debate-mono truncate pr-2 text-white">
-                            {displayName(person.user)}
-                          </span>
+                  <div className="space-y-2">
+                    {session.participatesIns.map((person) => {
+                      const roleColor =
+                        person.sessionRole === SessionRole.HOST ? 'bg-yellow-400/20 text-yellow-400 border-yellow-400/30' :
+                        person.sessionRole === SessionRole.MODERATOR ? 'bg-blue-400/20 text-blue-400 border-blue-400/30' :
+                        person.sessionRole === SessionRole.DEBATER ? 'bg-red-400/20 text-red-400 border-red-400/30' :
+                        'bg-gray-400/10 text-gray-400 border-gray-400/20'
+                      const dotColor =
+                        person.sessionRole === SessionRole.HOST ? 'bg-yellow-400' :
+                        person.sessionRole === SessionRole.MODERATOR ? 'bg-blue-400' :
+                        person.sessionRole === SessionRole.DEBATER ? 'bg-red-400' : 'bg-gray-400'
+                      const isOther = person.userId !== currentUserId
+
+                      return (
+                        <div key={person.userId} className="flex items-center justify-between p-2 rounded border border-white/10 bg-white/[0.02]">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                            <span className="text-sm debate-mono truncate text-white">
+                              {displayName(person.user)}
+                            </span>
+                            <span className={`text-[10px] debate-mono uppercase px-1.5 py-0.5 rounded border shrink-0 ${roleColor}`}>
+                              {person.sessionRole === SessionRole.HOST ? 'HOST' : person.sessionRole}
+                            </span>
+                          </div>
+                          {isOther && (isModeratorOrCreator || isHost) && (
+                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                              {/* Promote audience to debater (WAITING only) */}
+                              {isModeratorOrCreator && person.sessionRole === SessionRole.AUDIENCE && session.status === SessionStatus.WAITING && canJoinAsDebater && (
+                                session.type === SessionType.PANEL || isExpertVsCrowd ? (
+                                  <button
+                                    onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user) })}
+                                    className="p-1 rounded border border-green-500/30 text-green-400 hover:bg-green-500/20 hover:text-green-300 transition-colors"
+                                    title={session.type === SessionType.PANEL ? 'Promote to panelist' : 'Promote to debater'}
+                                    disabled={isPromoting === person.userId}
+                                  >
+                                    {isPromoting === person.userId ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <ArrowUp className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="flex gap-1">
+                                    <button
+                                      onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user), team: 'proponent' })}
+                                      className="px-1.5 py-0.5 rounded border border-red-500/30 text-red-400 hover:bg-red-500/20 text-[10px] font-bold debate-mono transition-colors"
+                                      title="Promote as proponent"
+                                      disabled={isPromoting === person.userId || proponentsFull}
+                                    >
+                                      PRO
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user), team: 'opponent' })}
+                                      className="px-1.5 py-0.5 rounded border border-blue-500/30 text-blue-400 hover:bg-blue-500/20 text-[10px] font-bold debate-mono transition-colors"
+                                      title="Promote as opponent"
+                                      disabled={isPromoting === person.userId || opponentsFull}
+                                    >
+                                      OPP
+                                    </button>
+                                  </span>
+                                )
+                              )}
+                              {/* Mute debater */}
+                              {isModeratorOrCreator && (person.sessionRole === SessionRole.DEBATER || person.sessionRole === SessionRole.HOST) && session.status !== SessionStatus.WAITING && (
+                                <button
+                                  onClick={() => handleMute(person.userId)}
+                                  className="p-1 rounded border border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/20 hover:text-yellow-300 transition-colors"
+                                  title="Mute participant"
+                                >
+                                  <MicOff className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {/* Assign moderator */}
+                              {isHost && person.sessionRole !== SessionRole.MODERATOR && (
+                                <button
+                                  onClick={() => setConfirmDialog({ type: 'moderator', targetUserId: person.userId, targetName: displayName(person.user) })}
+                                  className="p-1 rounded border border-blue-500/30 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 transition-colors"
+                                  title="Assign as moderator"
+                                  disabled={isAssigningModerator === person.userId}
+                                >
+                                  {isAssigningModerator === person.userId ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Shield className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              )}
+                              {/* Kick participant */}
+                              {isModeratorOrCreator && (
+                                <button
+                                  onClick={() => setConfirmDialog({ type: 'kick', targetUserId: person.userId, targetName: displayName(person.user) })}
+                                  className="p-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
+                                  title="Kick participant"
+                                  disabled={isKicking === person.userId}
+                                >
+                                  {isKicking === person.userId ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <span className="block w-3.5 h-3.5 text-center leading-[14px] text-xs font-bold">✕</span>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs debate-mono text-gray-400">
-                            {person.sessionRole}
-                          </span>
-                          {/* Promote audience to debater (WAITING only) */}
-                          {isModeratorOrCreator && person.userId !== currentUserId && person.sessionRole === SessionRole.AUDIENCE && session.status === SessionStatus.WAITING && canJoinAsDebater && (
-                            <button
-                              onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user) })}
-                              className="text-green-400 hover:text-green-300 text-xs opacity-60 hover:opacity-100"
-                              title="Promote to debater"
-                              disabled={isPromoting === person.userId}
-                            >
-                              {isPromoting === person.userId ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <ArrowUp className="w-3 h-3" />
-                              )}
-                            </button>
-                          )}
-                          {/* Mute debater via SFU pauseProducer */}
-                          {isModeratorOrCreator && person.userId !== currentUserId && (person.sessionRole === SessionRole.DEBATER || person.sessionRole === SessionRole.HOST) && session.status !== SessionStatus.WAITING && (
-                            <button
-                              onClick={() => handleMute(person.userId)}
-                              className="text-yellow-400 hover:text-yellow-300 text-xs opacity-60 hover:opacity-100"
-                              title="Mute participant"
-                            >
-                              <MicOff className="w-3 h-3" />
-                            </button>
-                          )}
-                          {/* Assign moderator */}
-                          {isHost && person.userId !== currentUserId && person.sessionRole !== SessionRole.MODERATOR && (
-                            <button
-                              onClick={() => setConfirmDialog({ type: 'moderator', targetUserId: person.userId, targetName: displayName(person.user) })}
-                              className="text-blue-400 hover:text-blue-300 text-xs opacity-60 hover:opacity-100"
-                              title="Assign as moderator"
-                              disabled={isAssigningModerator === person.userId}
-                            >
-                              {isAssigningModerator === person.userId ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                'MOD'
-                              )}
-                            </button>
-                          )}
-                          {/* Kick participant */}
-                          {isModeratorOrCreator && person.userId !== currentUserId && (
-                            <button
-                              onClick={() => setConfirmDialog({ type: 'kick', targetUserId: person.userId, targetName: displayName(person.user) })}
-                              className="text-red-400 hover:text-red-300 text-xs ml-1 opacity-60 hover:opacity-100"
-                              title="Kick participant"
-                              disabled={isKicking === person.userId}
-                            >
-                              {isKicking === person.userId ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                '✕'
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </CardContent>
               </Card>

@@ -80,6 +80,12 @@ export async function createSession(formData: {
                     session_role: SessionRole.HOST,
                 },
             },
+            team_assignments: {
+                create: {
+                    user_id: user.id,
+                    team: formData.type === SessionType.PANEL ? 'panel' : 'proponent',
+                },
+            },
         },
     })
 
@@ -107,15 +113,15 @@ export async function getSessionsByFilters(filters?: {
         : { in: Object.values(SessionType) }
     
 
+    // Only return sessions that have at least one active participant
+    sessionsWhere.participates_ins = { some: { left_at: null } }
+
     const sessions = await prisma.session.findMany({
         where: sessionsWhere,
         include: {
-            // host username
             host: { select: { id: true, username: true, realname: true } },
-            // moderator username
             moderator: { select: { id: true, username: true, realname: true } },
-            // participant count (active for live sessions, total for ended)
-            _count: { select: { participates_ins: true } },
+            _count: { select: { participates_ins: { where: { left_at: null } } } },
         },
         orderBy: { created_at: "desc" },
     })
@@ -137,6 +143,9 @@ export async function getSessionByCode(code: string) {
                 include: {
                     user: { select: { id: true, username: true, realname: true } },
                 },
+            },
+            team_assignments: {
+                select: { user_id: true, team: true },
             },
         },
         
@@ -523,14 +532,14 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
   }
 }
 
-export async function promoteToDebater(sessionId: string, targetUserId: string) {
+export async function promoteToDebater(sessionId: string, targetUserId: string, team?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error("Not authenticated")
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { host_id: true, moderator_id: true, status: true },
+    select: { host_id: true, moderator_id: true, status: true, type: true },
   })
   if (!session) throw new Error("Session not found")
   if (session.host_id !== user.id && session.moderator_id !== user.id) {
@@ -541,14 +550,34 @@ export async function promoteToDebater(sessionId: string, targetUserId: string) 
   }
   if (targetUserId === user.id) throw new Error("Cannot promote yourself")
 
-  await prisma.participatesIn.update({
-    where: {
-      user_id_session_id: {
-        user_id: targetUserId,
-        session_id: sessionId,
+  const resolvedTeam = session.type === SessionType.PANEL ? 'panel' : (team ?? 'opponent')
+
+  await prisma.$transaction(async (tx) => {
+    await tx.participatesIn.update({
+      where: {
+        user_id_session_id: {
+          user_id: targetUserId,
+          session_id: sessionId,
+        },
       },
-    },
-    data: { session_role: SessionRole.DEBATER },
+      data: { session_role: SessionRole.DEBATER },
+    })
+
+    await tx.teamAssignment.upsert({
+      where: { session_id_user_id: { session_id: sessionId, user_id: targetUserId } },
+      create: { session_id: sessionId, user_id: targetUserId, team: resolvedTeam },
+      update: { team: resolvedTeam },
+    })
+
+    await tx.roleHistory.create({
+      data: {
+        session_id: sessionId,
+        user_id: targetUserId,
+        old_role: SessionRole.AUDIENCE,
+        new_role: SessionRole.DEBATER,
+        reason: `Promoted by moderator/host (${resolvedTeam})`,
+      },
+    })
   })
 }
 
@@ -594,6 +623,25 @@ export async function updateSessionStatus(sessionId: string, status: SessionStat
 
     if (status === SessionStatus.LIVE) {
         data.format_locked = true
+
+        // Validate per-side debater requirements before starting
+        if (session.type === SessionType.TEAM || session.type === SessionType.ONE_ON_ONE) {
+            const teamCounts = await prisma.teamAssignment.groupBy({
+                by: ['team'],
+                where: {
+                    session_id: sessionId,
+                    user: { participates_ins: { some: { session_id: sessionId, left_at: null } } },
+                },
+                _count: true,
+            })
+            const proponentCount = teamCounts.find(t => t.team === 'proponent')?._count ?? 0
+            const opponentCount = teamCounts.find(t => t.team === 'opponent')?._count ?? 0
+            if (proponentCount < 1) throw new Error("Need at least 1 proponent to start")
+            if (opponentCount < 1) throw new Error("Need at least 1 opponent to start")
+            if (session.type === SessionType.ONE_ON_ONE && (proponentCount + opponentCount) !== 2) {
+                throw new Error("One-on-One requires exactly 2 debaters")
+            }
+        }
     }
 
     if (status === SessionStatus.ENDED) {
@@ -604,5 +652,40 @@ export async function updateSessionStatus(sessionId: string, status: SessionStat
         where: { id: sessionId },
         data
     })
-    
+
+}
+
+/**
+ * Purge stale sessions: mark all participants as left for ENDED sessions,
+ * then delete sessions with zero active participants.
+ */
+export async function purgeOldSessions() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("Not authenticated")
+
+    // 1. Mark all participants as left for ENDED sessions
+    await prisma.participatesIn.updateMany({
+        where: {
+            left_at: null,
+            session: { status: SessionStatus.ENDED },
+        },
+        data: { left_at: new Date() },
+    })
+
+    // 2. Delete sessions that have no active participants
+    const emptySessions = await prisma.session.findMany({
+        where: {
+            participates_ins: { none: { left_at: null } },
+        },
+        select: { id: true },
+    })
+
+    if (emptySessions.length > 0) {
+        await prisma.session.deleteMany({
+            where: { id: { in: emptySessions.map(s => s.id) } },
+        })
+    }
+
+    return { deleted: emptySessions.length }
 }

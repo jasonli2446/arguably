@@ -5,7 +5,12 @@ import BrowseClient from './BrowseClient'
 export const dynamic = 'force-dynamic'
 
 export default async function BrowsePage() {
-  const sessions = await getSessionsByFilters()
+  let sessions: Awaited<ReturnType<typeof getSessionsByFilters>> = []
+  try {
+    sessions = await getSessionsByFilters()
+  } catch {
+    // DB unreachable — render with empty list so the page still loads
+  }
 
   // Serialize dates for client component
   const serialized = sessions.map((session) => ({
@@ -28,13 +33,13 @@ export default async function BrowsePage() {
     host: {
       id: session.host.id,
       username: session.host.username,
-      realname: session.host.realname || 'Unknown',
+      realname: session.host.realname || session.host.username,
     },
     moderator: session.moderator
     ? {
       id: session.moderator.id,
       username: session.moderator.username,
-      realname: session.moderator.realname || 'Unknown',
+      realname: session.moderator.realname || session.moderator.username,
     }
     : null,
     _count: { participatesIns: session._count.participates_ins },

@@ -20,6 +20,7 @@ import { createProducer } from "./mediasoup/producers.js";
 import { createConsumer } from "./mediasoup/consumers.js";
 import type { RtpCapabilities } from "mediasoup/types";
 import { schemas, validatePayload } from "./validation.js";
+import { getSessionByCode, markParticipantLeft, removeFromAudienceQueue } from "./db.js";
 import {
   startDebate,
   advanceTurn,
@@ -680,6 +681,8 @@ export function setupSignaling(io: SocketIOServer): void {
         socketRoomMap.delete(socket.id);
         socketPeerMap.delete(socket.id);
         socketToPeerId.delete(socket.id);
+        socketUserMap.delete(socket.id);
+        socketDebateRoomMap.delete(socket.id);
         return;
       }
 
@@ -688,6 +691,8 @@ export function setupSignaling(io: SocketIOServer): void {
         socketRoomMap.delete(socket.id);
         socketPeerMap.delete(socket.id);
         socketToPeerId.delete(socket.id);
+        socketUserMap.delete(socket.id);
+        socketDebateRoomMap.delete(socket.id);
         return;
       }
 
@@ -696,6 +701,8 @@ export function setupSignaling(io: SocketIOServer): void {
         socketRoomMap.delete(socket.id);
         socketPeerMap.delete(socket.id);
         socketToPeerId.delete(socket.id);
+        socketUserMap.delete(socket.id);
+        socketDebateRoomMap.delete(socket.id);
         return;
       }
 
@@ -711,7 +718,7 @@ export function setupSignaling(io: SocketIOServer): void {
       const peerData = socketPeerMap.get(socket.id);
 
       // Start grace period timer
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         log.info({}, `Grace period expired [stablePeerId:${stablePeerId}]`);
         gracePeriodTimers.delete(stablePeerId);
 
@@ -726,9 +733,32 @@ export function setupSignaling(io: SocketIOServer): void {
           }
         }
 
+        // DB cleanup — mark participant as left (idempotent if sendBeacon already ran)
+        const userId = socketUserMap.get(socket.id);
+        if (userId) {
+          try {
+            const session = await getSessionByCode(roomId);
+            if (session) {
+              await markParticipantLeft(session.id, userId);
+              await removeFromAudienceQueue(session.id, userId);
+            }
+          } catch (err) {
+            log.error({ socketId: socket.id, error: String(err) }, "DB cleanup after grace period failed");
+          }
+
+          // Advance debate turn if this was the current speaker
+          try {
+            await handleSpeakerDisconnect(roomId, userId, io);
+          } catch (err) {
+            log.error({ socketId: socket.id, error: String(err) }, "handleSpeakerDisconnect failed");
+          }
+        }
+
         socketRoomMap.delete(socket.id);
         socketPeerMap.delete(socket.id);
         socketToPeerId.delete(socket.id);
+        socketUserMap.delete(socket.id);
+        socketDebateRoomMap.delete(socket.id);
       }, RECONNECT_GRACE_MS);
 
       gracePeriodTimers.set(stablePeerId, {

@@ -53,6 +53,13 @@ async function doPromoteFromQueue(
     })
   }
 
+  // Assign team (queue promotions are challengers/opponents by default)
+  await tx.teamAssignment.upsert({
+    where: { session_id_user_id: { session_id: sessionId, user_id: front.user_id } },
+    create: { session_id: sessionId, user_id: front.user_id, team: 'opponent' },
+    update: { team: 'opponent' },
+  })
+
   // Log role transition
   await tx.roleHistory.create({
     data: {
@@ -93,7 +100,9 @@ export async function joinQueue(sessionId: string) {
     select: { status: true },
   })
   if (!session) throw new Error("Session not found")
-  if (session.status !== SessionStatus.LIVE) throw new Error("Session is not live")
+  if (session.status !== SessionStatus.LIVE && session.status !== SessionStatus.WAITING) {
+    throw new Error("Session is not active")
+  }
 
   // Verify user is an audience member
   const participation = await prisma.participatesIn.findUnique({
@@ -108,7 +117,15 @@ export async function joinQueue(sessionId: string) {
     throw new Error("Only audience members can join the queue")
   }
 
-  await prisma.audienceQueue.create({
+  // Prevent duplicate queue entries
+  const existing = await prisma.audienceQueue.findUnique({
+    where: { session_id_user_id: { session_id: sessionId, user_id: user.id } },
+  })
+  if (existing) {
+    throw new Error("Already in the queue")
+  }
+
+  return await prisma.audienceQueue.create({
     data: {
       session_id: sessionId,
       user_id: user.id,
@@ -178,6 +195,11 @@ export async function promoteFromQueue(sessionId: string, userId?: string) {
             user_id: userId,
           },
         },
+      })
+      await tx.teamAssignment.upsert({
+        where: { session_id_user_id: { session_id: sessionId, user_id: userId } },
+        create: { session_id: sessionId, user_id: userId, team: 'opponent' },
+        update: { team: 'opponent' },
       })
       await tx.roleHistory.create({
         data: {

@@ -175,6 +175,29 @@ export async function isHostOrModerator(
   return rows.length > 0;
 }
 
+export async function markParticipantLeft(
+  sessionId: string,
+  userId: string,
+): Promise<void> {
+  await pool.query(
+    `UPDATE "ParticipatesIn"
+     SET left_at = NOW()
+     WHERE session_id = $1 AND user_id = $2 AND left_at IS NULL`,
+    [sessionId, userId],
+  );
+}
+
+export async function removeFromAudienceQueue(
+  sessionId: string,
+  userId: string,
+): Promise<void> {
+  await pool.query(
+    `DELETE FROM "AudienceQueue"
+     WHERE session_id = $1 AND user_id = $2`,
+    [sessionId, userId],
+  );
+}
+
 // Simple CUID-like ID generator (good enough for turn logs)
 function generateCuid(): string {
   const timestamp = Date.now().toString(36);

@@ -49,6 +49,9 @@ vi.mock('@/lib/prisma', () => ({
       roleHistory: {
         create: vi.fn(),
       },
+      teamAssignment: {
+        upsert: vi.fn(),
+      },
       debateState: { findUnique: vi.fn(), update: vi.fn() },
     })),
   },
@@ -103,6 +106,7 @@ describe('joinQueue', () => {
       session_role: SessionRole.AUDIENCE,
       left_at: null,
     })
+    ;(prisma.audienceQueue.findUnique as any).mockResolvedValue(null)
     ;(prisma.audienceQueue.create as any).mockResolvedValue({})
   })
 
@@ -116,12 +120,20 @@ describe('joinQueue', () => {
     await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Session not found')
   })
 
-  it('throws "Session is not live"', async () => {
+  it('allows joining queue when session is WAITING', async () => {
     ;(prisma.session.findUnique as any).mockResolvedValue({
       id: MOCK_SESSION_ID,
       status: SessionStatus.WAITING,
     })
-    await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Session is not live')
+    await expect(joinQueue(MOCK_SESSION_ID)).resolves.toBeDefined()
+  })
+
+  it('throws "Session is not active" when session is ENDED', async () => {
+    ;(prisma.session.findUnique as any).mockResolvedValue({
+      id: MOCK_SESSION_ID,
+      status: SessionStatus.ENDED,
+    })
+    await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Session is not active')
   })
 
   it('throws if not a participant (findUnique returns null)', async () => {
@@ -157,6 +169,15 @@ describe('joinQueue', () => {
       left_at: null,
     })
     await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Only audience members can join the queue')
+  })
+
+  it('throws if user is already in the queue', async () => {
+    ;(prisma.audienceQueue.findUnique as any).mockResolvedValue({
+      id: 'existing-entry',
+      session_id: MOCK_SESSION_ID,
+      user_id: MOCK_USER_ID,
+    })
+    await expect(joinQueue(MOCK_SESSION_ID)).rejects.toThrow('Already in the queue')
   })
 
   it('creates AudienceQueue entry on success', async () => {
@@ -341,6 +362,7 @@ describe('promoteFromQueue', () => {
       participatesIn: { update: vi.fn().mockResolvedValue({}) },
       debateState: { findUnique: vi.fn().mockResolvedValue(null) },
       roleHistory: { create: vi.fn().mockResolvedValue({}) },
+      teamAssignment: { upsert: vi.fn().mockResolvedValue({}) },
     }
     ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
@@ -361,6 +383,11 @@ describe('promoteFromQueue', () => {
         data: expect.objectContaining({ session_role: SessionRole.DEBATER }),
       })
     )
+    expect(mockTx.teamAssignment.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ user_id: 'promoted-user', team: 'opponent' }),
+      })
+    )
   })
 
   it('promotes specific user when userId is provided', async () => {
@@ -376,6 +403,7 @@ describe('promoteFromQueue', () => {
       },
       participatesIn: { update: vi.fn().mockResolvedValue({}) },
       roleHistory: { create: vi.fn().mockResolvedValue({}) },
+      teamAssignment: { upsert: vi.fn().mockResolvedValue({}) },
     }
     ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
@@ -409,6 +437,7 @@ describe('promoteFromQueue', () => {
       participatesIn: { update: vi.fn().mockResolvedValue({}) },
       debateState: { findUnique: vi.fn().mockResolvedValue(null) },
       roleHistory: { create: vi.fn().mockResolvedValue({}) },
+      teamAssignment: { upsert: vi.fn().mockResolvedValue({}) },
     }
     ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 

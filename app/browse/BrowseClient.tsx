@@ -2,13 +2,12 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Users, Clock, Zap, TrendingUp, Filter, Search } from 'lucide-react'
+import { Users, Filter, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import FloatingNav from '@/components/FloatingNav'
 import { useRouter } from 'next/navigation'
 import { joinSession } from '@/lib/actions/session'
-import { userStub } from '@/lib/utils'
 
 interface SessionData {
   id: string
@@ -61,9 +60,6 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
     if (statusFilter.length > 0 && !statusFilter.includes(s.status)) return false
     return true
   })
-
-  const liveCount = sessions.filter((s) => s.status === 'LIVE').length
-  const totalParticipants = sessions.reduce((sum, s) => sum + s._count.participatesIns, 0)
 
   async function handleJoin(session: SessionData) {
     setJoiningId(session.id)
@@ -119,7 +115,8 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
               <input
                 type="text"
                 placeholder="SEARCH DEBATES..."
-                className="debate-input w-full pl-12"
+                className="debate-input w-full"
+                style={{ paddingLeft: '3rem' }}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -131,13 +128,13 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
           </motion.div>
 
           {showFilters && (
-            <div className="mb-8 bg-gray-900 border-2 border-white/20 p-4">
+            <div className="mb-8 bg-gray-900 border-2 border-white/30 p-4">
               <div className="flex flex-wrap gap-6">
                 <div>
                   <p className="text-xs font-bold debate-mono text-gray-400 mb-2">TYPE</p>
                   <div className="flex flex-wrap gap-2">
                     {Object.entries(TYPE_LABELS).map(([key, label]) => (
-                      <button key={key} onClick={() => toggleTypeFilter(key)} className={`px-3 py-1 text-xs debate-mono border-2 transition-colors ${typeFilter.includes(key) ? 'bg-red-600 border-red-600 text-white' : 'border-white/20 text-gray-400 hover:border-white/40'}`}>{label}</button>
+                      <button key={key} onClick={() => toggleTypeFilter(key)} className={`px-3 py-1 text-xs debate-mono border-2 transition-colors ${typeFilter.includes(key) ? 'bg-red-600 border-red-600 text-white' : 'border-white/30 text-gray-400 hover:border-white/40'}`}>{label}</button>
                     ))}
                   </div>
                 </div>
@@ -145,7 +142,7 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
                   <p className="text-xs font-bold debate-mono text-gray-400 mb-2">STATUS</p>
                   <div className="flex flex-wrap gap-2">
                     {Object.keys(STATUS_COLORS).map((status) => (
-                      <button key={status} onClick={() => toggleStatusFilter(status)} className={`px-3 py-1 text-xs debate-mono border-2 transition-colors ${statusFilter.includes(status) ? 'bg-red-600 border-red-600 text-white' : 'border-white/20 text-gray-400 hover:border-white/40'}`}>{status}</button>
+                      <button key={status} onClick={() => toggleStatusFilter(status)} className={`px-3 py-1 text-xs debate-mono border-2 transition-colors ${statusFilter.includes(status) ? 'bg-red-600 border-red-600 text-white' : 'border-white/30 text-gray-400 hover:border-white/40'}`}>{status}</button>
                     ))}
                   </div>
                 </div>
@@ -163,33 +160,6 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
             </div>
           )}
 
-          {/* Stats Bar */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12"
-          >
-            {[
-              { label: "LIVE DEBATES", value: String(liveCount), icon: Zap },
-              { label: "PARTICIPANTS", value: String(totalParticipants), icon: Users },
-              { label: "TOTAL ROOMS", value: String(sessions.length), icon: Clock },
-              { label: "FORMATS", value: "4", icon: TrendingUp },
-            ].map((stat, index) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 + index * 0.1 }}
-                className="bg-gray-900 border-2 border-white/20 p-4 text-center"
-              >
-                <stat.icon className="w-6 h-6 text-red-400 mx-auto mb-2" />
-                <div className="text-3xl font-black text-white mb-1">{stat.value}</div>
-                <div className="text-xs debate-mono text-gray-400">{stat.label}</div>
-              </motion.div>
-            ))}
-          </motion.div>
-
           {/* Debates Grid */}
           {filtered.length === 0 ? (
             <motion.div
@@ -197,7 +167,7 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
               animate={{ opacity: 1 }}
               className="text-center py-20"
             >
-              <p className="text-2xl font-bold debate-title text-gray-500 mb-4">
+              <p className="text-2xl font-bold debate-title text-gray-400 mb-4">
                 {searchQuery ? 'NO MATCHING DEBATES' : 'NO ACTIVE DEBATES'}
               </p>
               <p className="text-gray-400 debate-text">
@@ -229,7 +199,7 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
                       <CardDescription className="debate-mono text-sm text-gray-400 mt-2">
                         {TYPE_LABELS[session.type] || session.type}
                         <span className="mx-2">·</span>
-                        by {session.moderator?.username || userStub.username}
+                        by {session.host.realname || session.host.username}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>

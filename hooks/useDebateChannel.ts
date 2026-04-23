@@ -51,10 +51,15 @@ interface TurnWarningPayload { secondsRemaining: number }
 interface DebatePausedPayload { version: number; timeRemaining: number }
 interface DebateResumedPayload { version: number; turnStartedAt: number; turnLength: number }
 
-// Socket.io emit with ack helper
+// Socket.io emit with ack helper (10s timeout to prevent indefinite hangs)
 function request(socket: IoSocket, event: string, data: Record<string, unknown> = {}): Promise<SocketResponse> {
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Socket request "${event}" timed out after 10s`))
+    }, 10_000)
+
     socket.emit(event, data, (response: SocketResponse) => {
+      clearTimeout(timer)
       if (response.success) {
         resolve(response)
       } else {

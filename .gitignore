@@ -19,6 +19,7 @@ public/Screenshot*.png
 /test-results/
 /playwright-report/
 /.playwright/
+/.playwright-cli/
 
 # next.js
 /.next/
@@ -48,6 +49,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# documents / LaTeX build artifacts
+*.pdf
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
 
 # AI
 CLAUDE.md

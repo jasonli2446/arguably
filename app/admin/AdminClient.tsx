@@ -201,7 +201,7 @@ function DashboardTab({ stats, auditLog }: { stats: DashboardStats; auditLog: Au
             {auditLog.entries.map((entry) => (
               <div
                 key={entry.id}
-                className="flex items-center justify-between p-3 border-2 border-white/10 bg-gray-900/50"
+                className="flex items-center justify-between p-3 border-2 border-white/20 bg-gray-900/50"
               >
                 <div className="flex items-center gap-3">
                   <Badge variant="outline" className="debate-badge">{entry.action}</Badge>
@@ -369,7 +369,7 @@ function UsersTab() {
           {users.map((user) => (
             <div
               key={user.id}
-              className="flex items-center justify-between p-4 border-2 border-white/10 bg-gray-900/50"
+              className="flex items-center justify-between p-4 border-2 border-white/20 bg-gray-900/50"
             >
               <div className="flex items-center gap-4">
                 <div>
@@ -617,7 +617,7 @@ function SessionsTab() {
           {sessions.map((session) => (
             <div
               key={session.id}
-              className="flex items-center justify-between p-4 border-2 border-white/10 bg-gray-900/50"
+              className="flex items-center justify-between p-4 border-2 border-white/20 bg-gray-900/50"
             >
               <div className="flex items-center gap-4">
                 <div>

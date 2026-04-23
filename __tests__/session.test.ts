@@ -629,6 +629,7 @@ describe('promoteToDebater', () => {
       host_id: MOCK_USER_ID,
       moderator_id: null,
       status: SessionStatus.WAITING,
+      type: SessionType.ONE_ON_ONE,
       ...overrides,
     })
   }
@@ -675,6 +676,53 @@ describe('promoteToDebater', () => {
     mockSessionForPromote({ host_id: 'some-host', moderator_id: MOCK_USER_ID })
     await promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)
     expect(prisma.participatesIn.update).toHaveBeenCalled()
+  })
+
+  it('creates TeamAssignment with specified team', async () => {
+    mockSessionForPromote()
+    await promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID, 'proponent')
+    expect(prisma.teamAssignment.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { session_id_user_id: { session_id: MOCK_SESSION_ID, user_id: TARGET_USER_ID } },
+        create: expect.objectContaining({ team: 'proponent' }),
+        update: expect.objectContaining({ team: 'proponent' }),
+      })
+    )
+  })
+
+  it('defaults to opponent team when no team specified', async () => {
+    mockSessionForPromote()
+    await promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)
+    expect(prisma.teamAssignment.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ team: 'opponent' }),
+      })
+    )
+  })
+
+  it('auto-assigns panel team for PANEL format', async () => {
+    mockSessionForPromote({ type: SessionType.PANEL })
+    await promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID, 'proponent')
+    expect(prisma.teamAssignment.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ team: 'panel' }),
+      })
+    )
+  })
+
+  it('creates RoleHistory on promote', async () => {
+    mockSessionForPromote()
+    await promoteToDebater(MOCK_SESSION_ID, TARGET_USER_ID)
+    expect(prisma.roleHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          session_id: MOCK_SESSION_ID,
+          user_id: TARGET_USER_ID,
+          old_role: SessionRole.AUDIENCE,
+          new_role: SessionRole.DEBATER,
+        }),
+      })
+    )
   })
 
   it('throws when session is PAUSED', async () => {

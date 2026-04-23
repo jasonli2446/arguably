@@ -30,8 +30,12 @@ export default function CreateRoom() {
   const [moderation, setModeration] = useState('auto')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [previewCode, setPreviewCode] = useState(generateRoomCode)
+  const [previewCode, setPreviewCode] = useState('')
   const [draftRestored, setDraftRestored] = useState(false)
+
+  useEffect(() => {
+    setPreviewCode(generateRoomCode())
+  }, [])
 
   useEffect(() => {
     const draft = localStorage.getItem('arguably-draft-room')
@@ -127,7 +131,7 @@ export default function CreateRoom() {
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">
       <div className="debate-grid fixed inset-0 opacity-30" />
 
-      <header className="relative z-10 border-b-2 border-white/20 bg-gray-900/90 backdrop-blur-sm">
+      <header className="relative z-10 border-b-2 border-white/30 bg-gray-900/90 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -153,7 +157,7 @@ export default function CreateRoom() {
             animate={{ opacity: 1, y: 0 }}
             className="mb-8"
           >
-            <div className="bg-gray-900 border-2 border-white/20 p-6 rounded-none">
+            <div className="bg-gray-900 border-2 border-white/30 p-6 rounded-none">
               <h2 className="text-xl font-bold debate-title mb-4 text-white">ROOM DETAILS</h2>
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
@@ -170,7 +174,7 @@ export default function CreateRoom() {
                   <Input
                     value={previewCode}
                     disabled
-                    className="debate-input bg-gray-800 text-gray-400 border-white/10"
+                    className="debate-input bg-gray-800 text-gray-400 border-white/20"
                   />
                 </div>
               </div>
@@ -195,14 +199,14 @@ export default function CreateRoom() {
                     className={`cursor-pointer transition-all border-2 ${
                       selectedFormat === format.id
                         ? `${format.color} border-opacity-100`
-                        : 'bg-gray-900 border-white/20 hover:border-white/40'
+                        : 'bg-gray-900 border-white/30 hover:border-white/40'
                     }`}
                     onClick={() => setSelectedFormat(format.id)}
                   >
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div className="flex items-center space-x-3">
-                           <div className={`w-10 h-10 rounded-md border-2 border-white/20 flex items-center justify-center ${
+                           <div className={`w-10 h-10 rounded-md border-2 border-white/30 flex items-center justify-center ${
                              selectedFormat === format.id ? 'bg-white text-black' : 'bg-gray-800 text-gray-400'
                            }`}>
                             {selectedFormat === format.id && <Check className="w-5 h-5" />}
@@ -238,7 +242,7 @@ export default function CreateRoom() {
             transition={{ delay: 0.2 }}
             className="mb-8"
           >
-            <div className="bg-gray-900 border-2 border-white/20 p-6 rounded-none">
+            <div className="bg-gray-900 border-2 border-white/30 p-6 rounded-none">
               <h2 className="text-xl font-bold debate-title mb-6 text-white">RULES & SETTINGS</h2>
               <div className="grid md:grid-cols-3 gap-6">
                 <div>
@@ -312,7 +316,7 @@ export default function CreateRoom() {
                     <option value="50">50% of audience</option>
                     <option value="75">75% of audience</option>
                   </select>
-                  <p className="text-xs debate-mono text-gray-500 mt-1">
+                  <p className="text-xs debate-mono text-gray-400 mt-1">
                     % of audience votes needed to kick a speaker
                   </p>
                 </div>
