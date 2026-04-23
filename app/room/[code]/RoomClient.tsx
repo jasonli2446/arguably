@@ -879,7 +879,7 @@ export default function RoomClient({
                   </CardHeader>
                   <CardContent className="p-4">
                     {/* Queue actions for audience members */}
-                    {isAudience && (
+                    {isAudience && session.status === SessionStatus.LIVE && (
                       <div className="mb-4">
                         {queueChannel.isInQueue ? (
                           <div className="space-y-2">

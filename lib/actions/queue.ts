@@ -108,7 +108,7 @@ export async function joinQueue(sessionId: string) {
     throw new Error("Only audience members can join the queue")
   }
 
-  return await prisma.audienceQueue.create({
+  await prisma.audienceQueue.create({
     data: {
       session_id: sessionId,
       user_id: user.id,
