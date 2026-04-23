@@ -23,17 +23,6 @@ export async function createSession(formData: {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Not authenticated")
 
-    // Ensure User row exists before FK-dependent session/participation creates
-    await prisma.user.upsert({
-        where: { id: user.id },
-        create: {
-            id: user.id,
-            username: `${(user.email?.split("@")[0] ?? "user").slice(0, 16)}-${user.id.slice(0, 8)}`,
-            email: user.email ?? null,
-        },
-        update: {},
-    })
-
     if (!formData.name.trim()) throw new Error("Room name is required")
 
     // Validate capacities and bounds
