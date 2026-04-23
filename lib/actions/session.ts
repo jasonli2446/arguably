@@ -237,6 +237,17 @@ export async function joinSessionAsDebater(sessionId: string, isProponent: boole
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Not authenticated")
 
+    // Ensure User row exists before any FK-dependent writes (mirrors joinSession guard)
+    await prisma.user.upsert({
+        where: { id: user.id },
+        create: {
+            id: user.id,
+            username: `${(user.email?.split("@")[0] ?? "user").slice(0, 16)}-${user.id.slice(0, 8)}`,
+            email: user.email ?? null,
+        },
+        update: {},
+    })
+
     try {
     await prisma.$transaction(async (tx) => {
         const session = await tx.session.findUnique({

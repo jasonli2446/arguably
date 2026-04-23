@@ -691,7 +691,7 @@ export default function RoomClient({
                             </p>
                           )}
                           {/* Prominent "Become a Debater" CTA for audience members during WAITING */}
-                          {canUpgradeToDebater && !isExpertVsCrowd && (
+                          {canUpgradeToDebater && !isExpertVsCrowd && isParticipant && (
                             <div className="mb-4 w-full max-w-xs mx-auto">
                               {session.type === SessionType.PANEL ? (
                                 <Button
