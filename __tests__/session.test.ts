@@ -41,6 +41,9 @@ vi.mock('@/lib/prisma', () => {
     roleHistory: {
       create: vi.fn().mockResolvedValue({}),
     },
+    user: {
+      upsert: vi.fn().mockResolvedValue({}),
+    },
     teamAssignment: {
       count: vi.fn().mockResolvedValue(0),
       upsert: vi.fn().mockResolvedValue({}),
