@@ -27,6 +27,7 @@ import {
   pauseDebate,
   resumeDebate,
   endDebate,
+  extendTurn,
   getOrLoadState,
   checkAuthorization,
   handleSpeakerDisconnect,
@@ -642,6 +643,19 @@ export function setupSignaling(io: SocketIOServer): void {
         const authorized = await checkAuthorization(data.roomCode, userId);
         if (!authorized) throw new Error("Not authorized");
         const result = await endDebate(data.roomCode, io);
+        callback(result);
+      } catch (error) {
+        callback({ success: false, error: String(error) });
+      }
+    });
+
+    socket.on("extendTurn", async (data: { roomCode: string; extraSeconds: number }, callback) => {
+      try {
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) throw new Error("Not authenticated");
+        const authorized = await checkAuthorization(data.roomCode, userId);
+        if (!authorized) throw new Error("Not authorized");
+        const result = await extendTurn(data.roomCode, data.extraSeconds, io);
         callback(result);
       } catch (error) {
         callback({ success: false, error: String(error) });

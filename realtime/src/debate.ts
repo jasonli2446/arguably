@@ -50,6 +50,7 @@ interface InternalDebateState {
   phase: DebatePhase;
   formatMeta: Record<string, unknown> | null;
   version: number;
+  turnEndsAt: number | null; // absolute ms timestamp — single source of truth for when turn ends
 
   // Timers (not persisted)
   turnTimer: ReturnType<typeof setTimeout> | null;
@@ -124,6 +125,7 @@ export async function startDebate(
     phase: "ACTIVE",
     formatMeta,
     version: 0,
+    turnEndsAt: now + turnLength * 1000,
     turnTimer: null,
     graceTimer: null,
     warningTimers: [],
@@ -214,6 +216,7 @@ export async function advanceTurn(
   const nextIndex = getNextIndex(state);
   state.currentIndex = nextIndex;
   state.turnStartedAt = now;
+  state.turnEndsAt = now + state.turnLength * 1000;
   state.phase = "ACTIVE";
   state.version++;
 
@@ -238,6 +241,7 @@ export async function advanceTurn(
   };
   io.to(roomCode).emit("turnChanged", payload);
 
+  log.info({}, `[debate] Turn advanced for ${roomCode}: index=${nextIndex}, reason=${reason}`);
   return { success: true };
 }
 
@@ -252,13 +256,14 @@ export async function pauseDebate(
   clearAllTimers(state);
 
   const now = Date.now();
-  const remaining = state.turnStartedAt
-    ? Math.max(0, state.turnLength - (now - state.turnStartedAt) / 1000)
+  const remaining = state.turnEndsAt
+    ? Math.max(0, (state.turnEndsAt - now) / 1000)
     : state.pausedTimeRemaining;
 
   state.isPaused = true;
   state.pausedTimeRemaining = remaining;
   state.turnStartedAt = null;
+  state.turnEndsAt = null;
   state.phase = "PAUSED";
   state.version++;
 
@@ -282,10 +287,10 @@ export async function resumeDebate(
   if (state.phase !== "PAUSED") return { success: false, error: "Not paused" };
 
   const now = Date.now();
+  const effectiveTurnLength = state.pausedTimeRemaining;
   state.isPaused = false;
   state.turnStartedAt = now;
-  // turnLength temporarily adjusted to the remaining time for this turn
-  const effectiveTurnLength = state.pausedTimeRemaining;
+  state.turnEndsAt = now + effectiveTurnLength * 1000;
   state.phase = "ACTIVE";
   state.version++;
 
@@ -349,11 +354,17 @@ export function getState(roomCode: string): DebateStatePayload | null {
   const state = debates.get(roomCode);
   if (!state) return null;
 
+  // Return effective turnLength (accounts for resume/extend) rather than base
+  const effectiveTurnLength =
+    state.turnEndsAt && state.turnStartedAt
+      ? (state.turnEndsAt - state.turnStartedAt) / 1000
+      : state.turnLength;
+
   return {
     version: state.version,
     debaterOrder: state.debaterOrder,
     currentIndex: state.currentIndex,
-    turnLength: state.turnLength,
+    turnLength: effectiveTurnLength,
     turnStartedAt: state.turnStartedAt,
     isPaused: state.isPaused,
     pausedTimeRemaining: state.pausedTimeRemaining,
@@ -375,6 +386,76 @@ export async function handleSpeakerDisconnect(
   if (currentSpeaker?.userId === userId) {
     await advanceTurn(roomCode, "SPEAKER_DISCONNECT", io);
   }
+}
+
+export async function extendTurn(
+  roomCode: string,
+  extraSeconds: number,
+  io: SocketIOServer,
+): Promise<{ success: boolean; error?: string }> {
+  if (extraSeconds < 1 || extraSeconds > 300) {
+    return { success: false, error: "Extra seconds must be 1-300" };
+  }
+
+  const state = debates.get(roomCode);
+  if (!state) return { success: false, error: "No active debate" };
+
+  if (state.phase === "PAUSED") {
+    state.pausedTimeRemaining += extraSeconds;
+    state.version++;
+    await persistState(state);
+
+    const payload: DebatePausedPayload = {
+      version: state.version,
+      timeRemaining: state.pausedTimeRemaining,
+    };
+    io.to(roomCode).emit("debatePaused", payload);
+    return { success: true };
+  }
+
+  if (state.phase !== "ACTIVE" && state.phase !== "GRACE") {
+    return { success: false, error: "Cannot extend in current phase" };
+  }
+
+  clearAllTimers(state);
+  const now = Date.now();
+
+  if (state.phase === "GRACE") {
+    // Transition back to ACTIVE, unmute the current speaker
+    state.phase = "ACTIVE";
+    const currentSpeaker = state.debaterOrder[state.currentIndex];
+    if (currentSpeaker) {
+      unmuteDebater(roomCode, currentSpeaker.userId, io);
+    }
+  }
+
+  // Extend the turn end time; anchor from now if turnEndsAt is in the past
+  state.turnEndsAt = Math.max(now, state.turnEndsAt ?? now) + extraSeconds * 1000;
+
+  // Reschedule timers for remaining time
+  const remainingSec = (state.turnEndsAt - now) / 1000;
+  scheduleTimersWithDuration(state, remainingSec, io);
+
+  state.version++;
+  await persistState(state);
+
+  // Broadcast updated turn info
+  const effectiveTurnLength = state.turnStartedAt
+    ? (state.turnEndsAt - state.turnStartedAt) / 1000
+    : state.turnLength;
+
+  const payload: TurnChangedPayload = {
+    version: state.version,
+    currentIndex: state.currentIndex,
+    debaterOrder: state.debaterOrder,
+    turnStartedAt: state.turnStartedAt ?? now,
+    turnLength: effectiveTurnLength,
+    phase: "ACTIVE",
+  };
+  io.to(roomCode).emit("turnChanged", payload);
+
+  log.info({}, `[debate] Turn extended by ${extraSeconds}s for ${roomCode}, ${remainingSec.toFixed(1)}s remaining`);
+  return { success: true };
 }
 
 export async function checkAuthorization(
@@ -434,6 +515,7 @@ async function recoverDebateFromRow(
     phase: row.phase as DebatePhase,
     formatMeta: row.format_meta as Record<string, unknown> | null,
     version: row.version,
+    turnEndsAt: row.turn_ends_at ?? null,
     turnTimer: null,
     graceTimer: null,
     warningTimers: [],
@@ -469,6 +551,7 @@ async function recoverDebateFromRow(
       // Resume with remaining time
       const remainingSec = remainingMs / 1000;
       state.turnStartedAt = now;
+      state.turnEndsAt = now + remainingMs;
       state.pausedTimeRemaining = remainingSec;
       scheduleTimersWithDuration(state, remainingSec, io);
       log.info({}, `[debate] Recovered active debate for ${sessionCode}, ${remainingSec.toFixed(1)}s remaining`);
@@ -551,6 +634,8 @@ function scheduleTimersWithDuration(
 
   const durationMs = durationSec * 1000;
 
+  log.info({}, `[debate] Timer scheduled for ${state.roomCode}: ${durationSec.toFixed(1)}s`);
+
   // Turn expiry timer -> starts grace period
   state.turnTimer = setTimeout(() => {
     onTurnExpired(state, io);
@@ -575,6 +660,8 @@ function onTurnExpired(
   state: InternalDebateState,
   io: SocketIOServer,
 ): void {
+  log.info({}, `[debate] Turn expired for ${state.roomCode}, entering GRACE`);
+
   // Enter grace phase
   state.phase = "GRACE";
 
@@ -593,6 +680,7 @@ function onTurnExpired(
 
   // Grace timer -> auto-advance
   state.graceTimer = setTimeout(() => {
+    log.info({}, `[debate] Grace expired for ${state.roomCode}, auto-advancing`);
     advanceTurn(state.roomCode, "TIMER_EXPIRED", io).catch((err) => {
       log.error({ err }, "[debate] Auto-advance failed");
     });
@@ -616,9 +704,7 @@ function clearAllTimers(state: InternalDebateState): void {
 
 async function persistState(state: InternalDebateState): Promise<void> {
   try {
-    const turnEndsAt = state.turnStartedAt
-      ? state.turnStartedAt + state.turnLength * 1000
-      : null;
+    const turnEndsAt = state.turnEndsAt;
 
     await persistDebateState({
       id: state.id,

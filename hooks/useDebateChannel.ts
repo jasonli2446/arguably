@@ -314,6 +314,11 @@ export function useDebateChannel({
     await request(socketRef.current, 'endDebate', { roomCode })
   }, [roomCode])
 
+  const extendTurn = useCallback(async (extraSeconds: number) => {
+    if (!socketRef.current) throw new Error('Not connected')
+    await request(socketRef.current, 'extendTurn', { roomCode, extraSeconds })
+  }, [roomCode])
+
   const broadcastKick = useCallback(async (userId: string) => {
     if (!socketRef.current) return
     await request(socketRef.current, 'moderatorKick', { roomCode, userId })
@@ -344,6 +349,7 @@ export function useDebateChannel({
     pause,
     resume,
     endDebate,
+    extendTurn,
     broadcastKick,
     broadcastPromote,
     broadcastMute,
