@@ -223,36 +223,32 @@ export default function ReplayClient({ data }: { data: ReplayData }) {
                           {/* Controls row */}
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
+                              <button
                                 onClick={() => player.seek(Math.max(0, player.currentTime - 10))}
                                 title="Back 10s"
+                                className="h-10 w-10 inline-flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 rounded transition-colors"
                               >
                                 <SkipBack className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
+                              </button>
+                              <button
                                 onClick={player.togglePlayPause}
-                                className="text-white hover:bg-white/10"
+                                className="h-10 w-10 inline-flex items-center justify-center text-white hover:bg-white/10 rounded transition-colors"
                               >
                                 {player.isPlaying ? (
                                   <Pause className="w-5 h-5" />
                                 ) : (
                                   <Play className="w-5 h-5" />
                                 )}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
+                              </button>
+                              <button
                                 onClick={() =>
                                   player.seek(Math.min(player.duration, player.currentTime + 10))
                                 }
                                 title="Forward 10s"
+                                className="h-10 w-10 inline-flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 rounded transition-colors"
                               >
                                 <SkipForward className="w-4 h-4" />
-                              </Button>
+                              </button>
                             </div>
 
                             {/* Speed selector */}
