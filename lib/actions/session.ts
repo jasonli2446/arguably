@@ -216,6 +216,7 @@ export async function joinSessionAsDebater(sessionId: string, isProponent: boole
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Not authenticated")
 
+    try {
     await prisma.$transaction(async (tx) => {
         const session = await tx.session.findUnique({
             where: { id: sessionId },
@@ -301,6 +302,10 @@ export async function joinSessionAsDebater(sessionId: string, isProponent: boole
             },
         })
     })
+    } catch (err) {
+        console.error('[joinSessionAsDebater] failed — sessionId=%s isProponent=%s userId=%s error:', sessionId, isProponent, user.id, err)
+        throw err
+    }
 }
 
 export async function leaveSession(sessionId: string) {

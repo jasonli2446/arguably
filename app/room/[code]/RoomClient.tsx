@@ -991,7 +991,7 @@ export default function RoomClient({
                   </CardHeader>
                   <CardContent className="p-4">
                     {/* Direct debater upgrade (non-Expert vs Crowd, non-queue path) */}
-                    {canUpgradeToDebater && !isExpertVsCrowd && (
+                    {canUpgradeToDebater && !isExpertVsCrowd && isParticipant && (
                       <div className="mb-4">
                         {session.type === SessionType.PANEL ? (
                           <Button
