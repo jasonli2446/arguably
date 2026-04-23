@@ -402,7 +402,7 @@ export async function recoverDebates(io: SocketIOServer): Promise<void> {
       await recoverDebateFromRow(row, io);
     }
   } catch (err) {
-    log.error({}, "[debate] Recovery failed:", err);
+    log.error({ err }, "[debate] Recovery failed");
   }
 }
 
@@ -594,7 +594,7 @@ function onTurnExpired(
   // Grace timer -> auto-advance
   state.graceTimer = setTimeout(() => {
     advanceTurn(state.roomCode, "TIMER_EXPIRED", io).catch((err) => {
-      log.error({}, "[debate] Auto-advance failed:", err);
+      log.error({ err }, "[debate] Auto-advance failed");
     });
   }, GRACE_PERIOD_MS);
 }
@@ -635,7 +635,7 @@ async function persistState(state: InternalDebateState): Promise<void> {
       version: state.version,
     });
   } catch (err) {
-    log.error({}, "[debate] Failed to persist state:", err);
+    log.error({ err }, "[debate] Failed to persist state");
   }
 }
 

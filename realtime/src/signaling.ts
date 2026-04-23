@@ -336,7 +336,7 @@ export function setupSignaling(io: SocketIOServer): void {
           const now = Date.now();
           const lastLog = lastScoreLog.get(producer.id) || 0;
           if (now - lastLog >= SCORE_LOG_INTERVAL_MS) {
-            log.info({}, `Producer [id:${producer.id}, kind:${producer.kind}] score:`, score);
+            log.info({ score }, `Producer [id:${producer.id}, kind:${producer.kind}] score`);
             lastScoreLog.set(producer.id, now);
           }
         });
@@ -422,7 +422,7 @@ export function setupSignaling(io: SocketIOServer): void {
           const now = Date.now();
           const lastLog = lastScoreLog.get(consumer.id) || 0;
           if (now - lastLog >= SCORE_LOG_INTERVAL_MS) {
-            log.info({}, `Consumer [id:${consumer.id}, kind:${consumer.kind}] score:`, score);
+            log.info({ score }, `Consumer [id:${consumer.id}, kind:${consumer.kind}] score`);
             lastScoreLog.set(consumer.id, now);
           }
         });
