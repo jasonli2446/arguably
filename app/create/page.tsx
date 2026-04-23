@@ -30,8 +30,12 @@ export default function CreateRoom() {
   const [moderation, setModeration] = useState('auto')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [previewCode, setPreviewCode] = useState(generateRoomCode)
+  const [previewCode, setPreviewCode] = useState('')
   const [draftRestored, setDraftRestored] = useState(false)
+
+  useEffect(() => {
+    setPreviewCode(generateRoomCode())
+  }, [])
 
   useEffect(() => {
     const draft = localStorage.getItem('arguably-draft-room')
