@@ -49,6 +49,9 @@ vi.mock('@/lib/prisma', () => ({
       roleHistory: {
         create: vi.fn(),
       },
+      teamAssignment: {
+        upsert: vi.fn(),
+      },
       debateState: { findUnique: vi.fn(), update: vi.fn() },
     })),
   },
@@ -359,6 +362,7 @@ describe('promoteFromQueue', () => {
       participatesIn: { update: vi.fn().mockResolvedValue({}) },
       debateState: { findUnique: vi.fn().mockResolvedValue(null) },
       roleHistory: { create: vi.fn().mockResolvedValue({}) },
+      teamAssignment: { upsert: vi.fn().mockResolvedValue({}) },
     }
     ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
@@ -379,6 +383,11 @@ describe('promoteFromQueue', () => {
         data: expect.objectContaining({ session_role: SessionRole.DEBATER }),
       })
     )
+    expect(mockTx.teamAssignment.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ user_id: 'promoted-user', team: 'opponent' }),
+      })
+    )
   })
 
   it('promotes specific user when userId is provided', async () => {
@@ -394,6 +403,7 @@ describe('promoteFromQueue', () => {
       },
       participatesIn: { update: vi.fn().mockResolvedValue({}) },
       roleHistory: { create: vi.fn().mockResolvedValue({}) },
+      teamAssignment: { upsert: vi.fn().mockResolvedValue({}) },
     }
     ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
@@ -427,6 +437,7 @@ describe('promoteFromQueue', () => {
       participatesIn: { update: vi.fn().mockResolvedValue({}) },
       debateState: { findUnique: vi.fn().mockResolvedValue(null) },
       roleHistory: { create: vi.fn().mockResolvedValue({}) },
+      teamAssignment: { upsert: vi.fn().mockResolvedValue({}) },
     }
     ;(prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx))
 
