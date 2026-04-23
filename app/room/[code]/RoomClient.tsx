@@ -103,6 +103,7 @@ export default function RoomClient({
     type: 'kick' | 'end' | 'moderator' | 'promote'
     targetUserId?: string
     targetName?: string
+    team?: string
   } | null>(null)
 
   const isModeratorOrCreator = currentRole === SessionRole.MODERATOR || currentRole === SessionRole.HOST
@@ -444,10 +445,10 @@ export default function RoomClient({
     }
   }
 
-  async function handlePromote(userId: string) {
+  async function handlePromote(userId: string, team?: string) {
     setIsPromoting(userId)
     try {
-      await promoteToDebater(session.id, userId)
+      await promoteToDebater(session.id, userId, team)
       toast.success('Participant promoted to debater')
       await debate.broadcastPromote(userId).catch(() => {})
       router.refresh()
@@ -486,7 +487,7 @@ export default function RoomClient({
         if (targetUserId) await handleAssignModerator(targetUserId)
         break
       case 'promote':
-        if (targetUserId) await handlePromote(targetUserId)
+        if (targetUserId) await handlePromote(targetUserId, confirmDialog.team)
         break
     }
   }
@@ -523,7 +524,9 @@ export default function RoomClient({
     ? debaters.length >= 1 && queueChannel.queue.length >= 1
     : session.type === SessionType.ONE_ON_ONE
       ? debaters.length === 2
-      : debaters.length >= 2
+      : session.type === SessionType.TEAM
+        ? proponentCount >= 1 && opponentCount >= 1
+        : debaters.length >= 2
 
   // Explain why Start Debate is disabled
   const getStartBlockedReason = () => {
@@ -533,6 +536,12 @@ export default function RoomClient({
     }
     if (session.type === SessionType.ONE_ON_ONE) {
       return `Need exactly 2 debaters (have ${debaters.length})`
+    }
+    if (session.type === SessionType.TEAM) {
+      if (proponentCount < 1 && opponentCount < 1) return 'Need at least 1 debater per side'
+      if (proponentCount < 1) return 'Need at least 1 proponent'
+      if (opponentCount < 1) return 'Need at least 1 opponent'
+      return `Need at least 1 debater per side`
     }
     if (session.type === SessionType.PANEL) {
       return `Need at least 2 panelists (have ${debaters.length})`
@@ -577,7 +586,9 @@ export default function RoomClient({
     },
     promote: {
       title: 'PROMOTE TO DEBATER',
-      description: `Promote ${confirmDialog.targetName} from audience to debater?`,
+      description: confirmDialog.team
+        ? `Promote ${confirmDialog.targetName} to ${confirmDialog.team}?`
+        : `Promote ${confirmDialog.targetName} from audience to debater?`,
       confirmLabel: 'PROMOTE',
       variant: 'default' as const,
     },
@@ -1440,18 +1451,40 @@ export default function RoomClient({
                           </span>
                           {/* Promote audience to debater (WAITING only) */}
                           {isModeratorOrCreator && person.userId !== currentUserId && person.sessionRole === SessionRole.AUDIENCE && session.status === SessionStatus.WAITING && canJoinAsDebater && (
-                            <button
-                              onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user) })}
-                              className="text-green-400 hover:text-green-300 text-xs opacity-60 hover:opacity-100"
-                              title="Promote to debater"
-                              disabled={isPromoting === person.userId}
-                            >
-                              {isPromoting === person.userId ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <ArrowUp className="w-3 h-3" />
-                              )}
-                            </button>
+                            session.type === SessionType.PANEL || isExpertVsCrowd ? (
+                              <button
+                                onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user) })}
+                                className="text-green-400 hover:text-green-300 text-xs opacity-60 hover:opacity-100"
+                                title={session.type === SessionType.PANEL ? 'Promote to panelist' : 'Promote to debater'}
+                                disabled={isPromoting === person.userId}
+                              >
+                                {isPromoting === person.userId ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <ArrowUp className="w-3 h-3" />
+                                )}
+                              </button>
+                            ) : (
+                              /* Sided formats: two buttons for proponent/opponent */
+                              <span className="flex gap-0.5">
+                                <button
+                                  onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user), team: 'proponent' })}
+                                  className="text-red-400 hover:text-red-300 text-[10px] font-bold opacity-60 hover:opacity-100"
+                                  title="Promote as proponent"
+                                  disabled={isPromoting === person.userId || proponentsFull}
+                                >
+                                  P
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user), team: 'opponent' })}
+                                  className="text-blue-400 hover:text-blue-300 text-[10px] font-bold opacity-60 hover:opacity-100"
+                                  title="Promote as opponent"
+                                  disabled={isPromoting === person.userId || opponentsFull}
+                                >
+                                  O
+                                </button>
+                              </span>
+                            )
                           )}
                           {/* Mute debater via SFU pauseProducer */}
                           {isModeratorOrCreator && person.userId !== currentUserId && (person.sessionRole === SessionRole.DEBATER || person.sessionRole === SessionRole.HOST) && session.status !== SessionStatus.WAITING && (

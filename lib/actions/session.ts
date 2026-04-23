@@ -606,6 +606,25 @@ export async function updateSessionStatus(sessionId: string, status: SessionStat
 
     if (status === SessionStatus.LIVE) {
         data.format_locked = true
+
+        // Validate per-side debater requirements before starting
+        if (session.type === SessionType.TEAM || session.type === SessionType.ONE_ON_ONE) {
+            const teamCounts = await prisma.teamAssignment.groupBy({
+                by: ['team'],
+                where: {
+                    session_id: sessionId,
+                    user: { participates_ins: { some: { session_id: sessionId, left_at: null } } },
+                },
+                _count: true,
+            })
+            const proponentCount = teamCounts.find(t => t.team === 'proponent')?._count ?? 0
+            const opponentCount = teamCounts.find(t => t.team === 'opponent')?._count ?? 0
+            if (proponentCount < 1) throw new Error("Need at least 1 proponent to start")
+            if (opponentCount < 1) throw new Error("Need at least 1 opponent to start")
+            if (session.type === SessionType.ONE_ON_ONE && (proponentCount + opponentCount) !== 2) {
+                throw new Error("One-on-One requires exactly 2 debaters")
+            }
+        }
     }
 
     if (status === SessionStatus.ENDED) {
