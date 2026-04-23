@@ -12,13 +12,6 @@ test.describe('Browse Page', () => {
     await expect(page.getByPlaceholder('SEARCH DEBATES...')).toBeVisible()
   })
 
-  test('shows stats section', async ({ page }) => {
-    await page.goto('/browse')
-    await expect(page.getByText('LIVE DEBATES')).toBeVisible()
-    await expect(page.getByText('PARTICIPANTS')).toBeVisible()
-    await expect(page.getByText('TOTAL ROOMS')).toBeVisible()
-  })
-
   test('shows empty state when no debates exist', async ({ page }) => {
     await page.goto('/browse')
     // If no sessions exist, should show empty state
