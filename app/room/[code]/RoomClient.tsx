@@ -1438,103 +1438,113 @@ export default function RoomClient({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4">
-                  <div className="space-y-3">
-                    {session.participatesIns.map((person) => (
-                      <div key={person.userId} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            person.sessionRole === SessionRole.HOST ? 'bg-yellow-400' :
-                            person.sessionRole === SessionRole.MODERATOR ? 'bg-blue-400' :
-                            person.sessionRole === SessionRole.DEBATER ? 'bg-red-400' : 'bg-gray-400'
-                          }`} />
-                          <span className="text-sm debate-mono truncate pr-2 text-white">
-                            {displayName(person.user)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs debate-mono text-gray-400">
-                            {person.sessionRole}
-                          </span>
-                          {/* Promote audience to debater (WAITING only) */}
-                          {isModeratorOrCreator && person.userId !== currentUserId && person.sessionRole === SessionRole.AUDIENCE && session.status === SessionStatus.WAITING && canJoinAsDebater && (
-                            session.type === SessionType.PANEL || isExpertVsCrowd ? (
-                              <button
-                                onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user) })}
-                                className="text-green-400 hover:text-green-300 text-xs opacity-60 hover:opacity-100"
-                                title={session.type === SessionType.PANEL ? 'Promote to panelist' : 'Promote to debater'}
-                                disabled={isPromoting === person.userId}
-                              >
-                                {isPromoting === person.userId ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <div className="space-y-2">
+                    {session.participatesIns.map((person) => {
+                      const roleColor =
+                        person.sessionRole === SessionRole.HOST ? 'bg-yellow-400/20 text-yellow-400 border-yellow-400/30' :
+                        person.sessionRole === SessionRole.MODERATOR ? 'bg-blue-400/20 text-blue-400 border-blue-400/30' :
+                        person.sessionRole === SessionRole.DEBATER ? 'bg-red-400/20 text-red-400 border-red-400/30' :
+                        'bg-gray-400/10 text-gray-400 border-gray-400/20'
+                      const dotColor =
+                        person.sessionRole === SessionRole.HOST ? 'bg-yellow-400' :
+                        person.sessionRole === SessionRole.MODERATOR ? 'bg-blue-400' :
+                        person.sessionRole === SessionRole.DEBATER ? 'bg-red-400' : 'bg-gray-400'
+                      const isOther = person.userId !== currentUserId
+
+                      return (
+                        <div key={person.userId} className="flex items-center justify-between p-2 rounded border border-white/10 bg-white/[0.02]">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                            <span className="text-sm debate-mono truncate text-white">
+                              {displayName(person.user)}
+                            </span>
+                            <span className={`text-[10px] debate-mono uppercase px-1.5 py-0.5 rounded border shrink-0 ${roleColor}`}>
+                              {person.sessionRole === SessionRole.HOST ? 'HOST' : person.sessionRole}
+                            </span>
+                          </div>
+                          {isOther && (isModeratorOrCreator || isHost) && (
+                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                              {/* Promote audience to debater (WAITING only) */}
+                              {isModeratorOrCreator && person.sessionRole === SessionRole.AUDIENCE && session.status === SessionStatus.WAITING && canJoinAsDebater && (
+                                session.type === SessionType.PANEL || isExpertVsCrowd ? (
+                                  <button
+                                    onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user) })}
+                                    className="p-1 rounded border border-green-500/30 text-green-400 hover:bg-green-500/20 hover:text-green-300 transition-colors"
+                                    title={session.type === SessionType.PANEL ? 'Promote to panelist' : 'Promote to debater'}
+                                    disabled={isPromoting === person.userId}
+                                  >
+                                    {isPromoting === person.userId ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <ArrowUp className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
                                 ) : (
-                                  <ArrowUp className="w-3 h-3" />
-                                )}
-                              </button>
-                            ) : (
-                              /* Sided formats: two buttons for proponent/opponent */
-                              <span className="flex gap-0.5">
-                                <button
-                                  onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user), team: 'proponent' })}
-                                  className="text-red-400 hover:text-red-300 text-[10px] font-bold opacity-60 hover:opacity-100"
-                                  title="Promote as proponent"
-                                  disabled={isPromoting === person.userId || proponentsFull}
-                                >
-                                  P
-                                </button>
-                                <button
-                                  onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user), team: 'opponent' })}
-                                  className="text-blue-400 hover:text-blue-300 text-[10px] font-bold opacity-60 hover:opacity-100"
-                                  title="Promote as opponent"
-                                  disabled={isPromoting === person.userId || opponentsFull}
-                                >
-                                  O
-                                </button>
-                              </span>
-                            )
-                          )}
-                          {/* Mute debater via SFU pauseProducer */}
-                          {isModeratorOrCreator && person.userId !== currentUserId && (person.sessionRole === SessionRole.DEBATER || person.sessionRole === SessionRole.HOST) && session.status !== SessionStatus.WAITING && (
-                            <button
-                              onClick={() => handleMute(person.userId)}
-                              className="text-yellow-400 hover:text-yellow-300 text-xs opacity-60 hover:opacity-100"
-                              title="Mute participant"
-                            >
-                              <MicOff className="w-3 h-3" />
-                            </button>
-                          )}
-                          {/* Assign moderator */}
-                          {isHost && person.userId !== currentUserId && person.sessionRole !== SessionRole.MODERATOR && (
-                            <button
-                              onClick={() => setConfirmDialog({ type: 'moderator', targetUserId: person.userId, targetName: displayName(person.user) })}
-                              className="text-blue-400 hover:text-blue-300 text-xs opacity-60 hover:opacity-100"
-                              title="Assign as moderator"
-                              disabled={isAssigningModerator === person.userId}
-                            >
-                              {isAssigningModerator === person.userId ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                'MOD'
+                                  <span className="flex gap-1">
+                                    <button
+                                      onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user), team: 'proponent' })}
+                                      className="px-1.5 py-0.5 rounded border border-red-500/30 text-red-400 hover:bg-red-500/20 text-[10px] font-bold debate-mono transition-colors"
+                                      title="Promote as proponent"
+                                      disabled={isPromoting === person.userId || proponentsFull}
+                                    >
+                                      PRO
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmDialog({ type: 'promote', targetUserId: person.userId, targetName: displayName(person.user), team: 'opponent' })}
+                                      className="px-1.5 py-0.5 rounded border border-blue-500/30 text-blue-400 hover:bg-blue-500/20 text-[10px] font-bold debate-mono transition-colors"
+                                      title="Promote as opponent"
+                                      disabled={isPromoting === person.userId || opponentsFull}
+                                    >
+                                      OPP
+                                    </button>
+                                  </span>
+                                )
                               )}
-                            </button>
-                          )}
-                          {/* Kick participant */}
-                          {isModeratorOrCreator && person.userId !== currentUserId && (
-                            <button
-                              onClick={() => setConfirmDialog({ type: 'kick', targetUserId: person.userId, targetName: displayName(person.user) })}
-                              className="text-red-400 hover:text-red-300 text-xs ml-1 opacity-60 hover:opacity-100"
-                              title="Kick participant"
-                              disabled={isKicking === person.userId}
-                            >
-                              {isKicking === person.userId ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                '✕'
+                              {/* Mute debater */}
+                              {isModeratorOrCreator && (person.sessionRole === SessionRole.DEBATER || person.sessionRole === SessionRole.HOST) && session.status !== SessionStatus.WAITING && (
+                                <button
+                                  onClick={() => handleMute(person.userId)}
+                                  className="p-1 rounded border border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/20 hover:text-yellow-300 transition-colors"
+                                  title="Mute participant"
+                                >
+                                  <MicOff className="w-3.5 h-3.5" />
+                                </button>
                               )}
-                            </button>
+                              {/* Assign moderator */}
+                              {isHost && person.sessionRole !== SessionRole.MODERATOR && (
+                                <button
+                                  onClick={() => setConfirmDialog({ type: 'moderator', targetUserId: person.userId, targetName: displayName(person.user) })}
+                                  className="p-1 rounded border border-blue-500/30 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 transition-colors"
+                                  title="Assign as moderator"
+                                  disabled={isAssigningModerator === person.userId}
+                                >
+                                  {isAssigningModerator === person.userId ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Shield className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              )}
+                              {/* Kick participant */}
+                              {isModeratorOrCreator && (
+                                <button
+                                  onClick={() => setConfirmDialog({ type: 'kick', targetUserId: person.userId, targetName: displayName(person.user) })}
+                                  className="p-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
+                                  title="Kick participant"
+                                  disabled={isKicking === person.userId}
+                                >
+                                  {isKicking === person.userId ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <span className="block w-3.5 h-3.5 text-center leading-[14px] text-xs font-bold">✕</span>
+                                  )}
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </CardContent>
               </Card>
