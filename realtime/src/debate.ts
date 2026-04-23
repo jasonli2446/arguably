@@ -19,7 +19,7 @@ import {
   logTurnTransition,
   getSessionByCode,
   getSessionCodeById,
-  validateDebaterIds,
+  filterActiveDebaterIds,
   isHostOrModerator,
   type DbDebateState,
 } from "./db.js";
@@ -78,20 +78,13 @@ export async function startDebate(
   if (turnLength < 1 || turnLength > 1800) {
     return { success: false, error: "Turn length must be 1-1800 seconds" };
   }
-  // Format-specific minimum debater counts
-  if (format === "EXPERT_VS_CROWD") {
-    if (debaters.length < 1) {
-      return { success: false, error: "At least 1 debater (the expert) required" };
-    }
-  } else if (debaters.length < 2) {
-    return { success: false, error: "At least 2 debaters required" };
+  // Basic non-empty check before DB lookup
+  if (debaters.length < 1) {
+    return { success: false, error: "At least 1 debater required" };
   }
 
-  // Format-specific validation
-  if (format === "ONE_ON_ONE" && debaters.length !== 2) {
-    return { success: false, error: "One-on-One requires exactly 2 debaters" };
-  }
-  if (format === "PANEL" && (debaters.length < 3 || debaters.length > 6)) {
+  // Panel upper bound can be checked on raw input
+  if (format === "PANEL" && debaters.length > 6) {
     return { success: false, error: "Panel requires 3-6 debaters" };
   }
 
@@ -101,11 +94,17 @@ export async function startDebate(
     return { success: false, error: "Session not found" };
   }
 
-  // Validate debater IDs are actual participants
-  const debaterIds = debaters.map((d) => d.userId);
-  const valid = await validateDebaterIds(session.id, debaterIds);
-  if (!valid) {
-    return { success: false, error: "Invalid debater IDs" };
+  // Filter to only currently active participants (guards against stale client state)
+  const requestedIds = debaters.map((d) => d.userId);
+  const activeIds = new Set(await filterActiveDebaterIds(session.id, requestedIds));
+  const activeDebaters = debaters.filter((d) => activeIds.has(d.userId));
+
+  const minRequired = format === "EXPERT_VS_CROWD" ? 1 : 2;
+  if (activeDebaters.length < minRequired) {
+    return { success: false, error: `Not enough active debaters (need ${minRequired}, have ${activeDebaters.length})` };
+  }
+  if (format === "ONE_ON_ONE" && activeDebaters.length !== 2) {
+    return { success: false, error: "One-on-One requires exactly 2 active debaters" };
   }
 
   // Check format matches session type
@@ -121,7 +120,7 @@ export async function startDebate(
     sessionId: session.id,
     roomCode,
     format,
-    debaterOrder: debaters,
+    debaterOrder: activeDebaters,
     currentIndex: 0,
     turnLength,
     turnStartedAt: now,

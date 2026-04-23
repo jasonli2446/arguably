@@ -140,17 +140,17 @@ export async function getSessionByCode(
   return rows[0] ?? null;
 }
 
-export async function validateDebaterIds(
+export async function filterActiveDebaterIds(
   sessionId: string,
   userIds: string[],
-): Promise<boolean> {
-  if (userIds.length === 0) return false;
+): Promise<string[]> {
+  if (userIds.length === 0) return [];
   const { rows } = await pool.query(
     `SELECT user_id FROM "ParticipatesIn"
      WHERE session_id = $1 AND user_id = ANY($2::uuid[]) AND left_at IS NULL`,
     [sessionId, userIds],
   );
-  return rows.length === userIds.length;
+  return rows.map((r: { user_id: string }) => r.user_id);
 }
 
 export async function getSessionCodeById(
