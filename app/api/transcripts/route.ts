@@ -98,11 +98,13 @@ export async function POST(request: Request) {
     return badRequest("OPENAI_API_KEY is not configured", 500)
   }
 
+  const WHISPER_PROMPT = "This is a live debate discussion. Speakers present arguments, counterarguments, and evidence on various topics."
+
   const upstreamForm = new FormData()
   upstreamForm.append("model", model)
   upstreamForm.append("file", audioFile, audioFile.name || `chunk-${chunkIndex}.webm`)
   upstreamForm.append("language", "en")
-  upstreamForm.append("prompt", "This is a live debate discussion. Speakers present arguments, counterarguments, and evidence on various topics.")
+  upstreamForm.append("prompt", WHISPER_PROMPT)
 
   const upstreamResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -137,7 +139,7 @@ export async function POST(request: Request) {
       ? upstreamJson.text.trim()
       : ""
 
-  if (!text) {
+  if (!text || text === WHISPER_PROMPT) {
     return NextResponse.json({ skipped: true })
   }
 
