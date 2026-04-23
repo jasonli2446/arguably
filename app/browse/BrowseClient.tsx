@@ -55,14 +55,17 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
   const router = useRouter()
 
   const filtered = sessions.filter((s) => {
+    // Hide sessions with no active participants
+    if (s._count.participatesIns === 0) return false
     if (!s.name.toLowerCase().includes(searchQuery.toLowerCase())) return false
     if (typeFilter.length > 0 && !typeFilter.includes(s.type)) return false
     if (statusFilter.length > 0 && !statusFilter.includes(s.status)) return false
     return true
   })
 
-  const liveCount = sessions.filter((s) => s.status === 'LIVE').length
-  const totalParticipants = sessions.reduce((sum, s) => sum + s._count.participatesIns, 0)
+  const nonEmpty = sessions.filter((s) => s._count.participatesIns > 0)
+  const liveCount = nonEmpty.filter((s) => s.status === 'LIVE').length
+  const totalParticipants = nonEmpty.reduce((sum, s) => sum + s._count.participatesIns, 0)
 
   async function handleJoin(session: SessionData) {
     setJoiningId(session.id)
@@ -173,7 +176,7 @@ export default function BrowseClient({ sessions }: { sessions: SessionData[] }) 
             {[
               { label: "LIVE DEBATES", value: String(liveCount), icon: Zap },
               { label: "PARTICIPANTS", value: String(totalParticipants), icon: Users },
-              { label: "TOTAL ROOMS", value: String(sessions.length), icon: Clock },
+              { label: "TOTAL ROOMS", value: String(nonEmpty.length), icon: Clock },
               { label: "FORMATS", value: "4", icon: TrendingUp },
             ].map((stat, index) => (
               <motion.div

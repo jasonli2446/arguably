@@ -113,6 +113,15 @@ export async function getSessionsByFilters(filters?: {
         : { in: Object.values(SessionType) }
     
 
+    // Clean up stale participants: mark as left for ENDED sessions
+    await prisma.participatesIn.updateMany({
+        where: {
+            left_at: null,
+            session: { status: SessionStatus.ENDED },
+        },
+        data: { left_at: new Date() },
+    })
+
     const sessions = await prisma.session.findMany({
         where: sessionsWhere,
         include: {
@@ -120,7 +129,7 @@ export async function getSessionsByFilters(filters?: {
             host: { select: { id: true, username: true, realname: true } },
             // moderator username
             moderator: { select: { id: true, username: true, realname: true } },
-            // participant count (active for live sessions, total for ended)
+            // participant count (active only)
             _count: { select: { participates_ins: { where: { left_at: null } } } },
         },
         orderBy: { created_at: "desc" },
