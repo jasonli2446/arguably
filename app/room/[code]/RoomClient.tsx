@@ -640,6 +640,44 @@ export default function RoomClient({
                               {getDebaterCapacityMessage()}
                             </p>
                           )}
+                          {canUpgradeToDebater && !isExpertVsCrowd && !showDebaterOptions && (
+                            <Button
+                              className="debate-button bg-yellow-500 text-black border-yellow-600 font-bold mb-4"
+                              onClick={() => setShowDebaterOptions(true)}
+                              disabled={isJoining}
+                            >
+                              <Swords className="w-4 h-4 mr-2" />
+                              {session.type === SessionType.PANEL ? 'JOIN AS PANELIST' : 'BECOME A DEBATER'}
+                            </Button>
+                          )}
+                          {canUpgradeToDebater && !isExpertVsCrowd && showDebaterOptions && session.type !== SessionType.PANEL && (
+                            <div className="flex flex-col items-center gap-2 mb-4">
+                              <div className="grid grid-cols-2 gap-2">
+                                <Button
+                                  className="debate-button bg-red-600 text-white border-red-700 font-bold text-sm"
+                                  onClick={() => handleUpgradeToDebater(true)}
+                                  disabled={isJoining || proponentsFull}
+                                >
+                                  {proponentsFull ? 'PROPONENT FULL' : 'JOIN AS PROPONENT'}
+                                </Button>
+                                <Button
+                                  className="debate-button bg-blue-600 text-white border-blue-700 font-bold text-sm"
+                                  onClick={() => handleUpgradeToDebater(false)}
+                                  disabled={isJoining || opponentsFull}
+                                >
+                                  {opponentsFull ? 'OPPONENT FULL' : 'JOIN AS OPPONENT'}
+                                </Button>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="debate-button text-xs"
+                                onClick={() => setShowDebaterOptions(false)}
+                              >
+                                CANCEL
+                              </Button>
+                            </div>
+                          )}
                           {isModeratorOrCreator && (
                             <Button
                               className="debate-button bg-red-600 text-white border-red-700"
