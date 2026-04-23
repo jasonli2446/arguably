@@ -140,7 +140,7 @@ export default function RoomClient({
     sessionId: session.id,
     currentUserId,
     localStream,
-    enabled: isDebater && session.status !== SessionStatus.ENDED,
+    enabled: isDebater && session.status === SessionStatus.LIVE,
     audioMuted,
     initialSegments: session.transcriptSegments,
   })
