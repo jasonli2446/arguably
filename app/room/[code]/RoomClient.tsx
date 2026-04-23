@@ -504,7 +504,7 @@ export default function RoomClient({
 
   // Check if debate can start
   const canStartDebate = isExpertVsCrowd
-    ? debaters.length >= 1 && queueChannel.queue.length >= 1
+    ? debaters.length >= 1
     : session.type === SessionType.ONE_ON_ONE
       ? debaters.length === 2
       : debaters.length >= 2
