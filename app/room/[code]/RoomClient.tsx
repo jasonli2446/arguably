@@ -204,6 +204,7 @@ export default function RoomClient({
   // Refresh page when participants change (via Supabase Realtime)
   useEffect(() => {
     const supabase = createClient()
+    // Test: subscribe without filter to check if Realtime delivers ANY changes
     const channel = supabase
       .channel(`participants:${session.id}`)
       .on(
@@ -212,7 +213,6 @@ export default function RoomClient({
           event: '*',
           schema: 'public',
           table: 'ParticipatesIn',
-          filter: `session_id=eq.${session.id}`,
         },
         (payload) => {
           console.log('[Realtime] ParticipatesIn change:', payload.eventType, payload)
