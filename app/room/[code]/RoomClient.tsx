@@ -498,13 +498,24 @@ export default function RoomClient({
   const isDebateLive = debate.debateStatus === 'live' || debate.debateStatus === 'paused'
   const statusDot = isDebateLive ? 'bg-red-600 animate-pulse' : 'bg-gray-500'
 
-  // Get debater capacity message
+  // Get debater capacity message (format-aware)
   const getDebaterCapacityMessage = () => {
-    if (session.type === SessionType.PANEL) {
-      return `Need ${(session.debaterCapacityPanel ?? 0) - debaters.length} more panelist${(session.debaterCapacityPanel ?? 0) - debaters.length === 1 ? '' : 's'}`
-    } else {
-      return `Need ${totalDebaterCapacity - debaters.length} more debater${totalDebaterCapacity - debaters.length === 1 ? '' : 's'}`
+    if (isExpertVsCrowd) {
+      if (queueChannel.queue.length === 0) {
+        return 'Waiting for a challenger to join the queue'
+      }
+      return `${queueChannel.queue.length} challenger${queueChannel.queue.length === 1 ? '' : 's'} in queue — ready to start`
     }
+    if (session.type === SessionType.PANEL) {
+      const needed = (session.debaterCapacityPanel ?? 0) - debaters.length
+      return needed > 0
+        ? `Need ${needed} more panelist${needed === 1 ? '' : 's'}`
+        : 'Panel is full — ready to start'
+    }
+    const needed = totalDebaterCapacity - debaters.length
+    return needed > 0
+      ? `Need ${needed} more debater${needed === 1 ? '' : 's'}`
+      : 'All debater slots filled — ready to start'
   }
 
   // Check if debate can start
@@ -513,6 +524,21 @@ export default function RoomClient({
     : session.type === SessionType.ONE_ON_ONE
       ? debaters.length === 2
       : debaters.length >= 2
+
+  // Explain why Start Debate is disabled
+  const getStartBlockedReason = () => {
+    if (isExpertVsCrowd) {
+      if (debaters.length < 1) return 'The host must be present to start'
+      if (queueChannel.queue.length < 1) return 'At least 1 challenger must be in the queue'
+    }
+    if (session.type === SessionType.ONE_ON_ONE) {
+      return `Need exactly 2 debaters (have ${debaters.length})`
+    }
+    if (session.type === SessionType.PANEL) {
+      return `Need at least 2 panelists (have ${debaters.length})`
+    }
+    return `Need at least 2 debaters (have ${debaters.length})`
+  }
 
   // Timer color based on remaining time
   const timerColorClass = displayTime <= 10
@@ -640,7 +666,7 @@ export default function RoomClient({
                           <p className="text-gray-400 debate-mono mb-6">
                             {session.participatesIns.length} / {totalDebaterCapacity + session.audienceCapacity + 1} joined
                           </p>
-                          {debaters.length < totalDebaterCapacity && (
+                          {(debaters.length < totalDebaterCapacity || isExpertVsCrowd) && (
                             <p className="text-yellow-400 debate-mono text-sm mb-4">
                               {getDebaterCapacityMessage()}
                             </p>
@@ -698,20 +724,27 @@ export default function RoomClient({
                             </div>
                           )}
                           {isModeratorOrCreator && (
-                            <Button
-                              className="debate-button bg-red-600 text-white border-red-700"
-                              onClick={handleStartSession}
-                              disabled={!canStartDebate || isStarting}
-                            >
-                              {isStarting ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  STARTING...
-                                </>
-                              ) : (
-                                'START DEBATE'
+                            <div className="text-center">
+                              <Button
+                                className="debate-button bg-red-600 text-white border-red-700"
+                                onClick={handleStartSession}
+                                disabled={!canStartDebate || isStarting}
+                              >
+                                {isStarting ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    STARTING...
+                                  </>
+                                ) : (
+                                  'START DEBATE'
+                                )}
+                              </Button>
+                              {!canStartDebate && (
+                                <p className="text-red-400/70 debate-mono text-xs mt-2">
+                                  {getStartBlockedReason()}
+                                </p>
                               )}
-                            </Button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -918,7 +951,9 @@ export default function RoomClient({
                 </Card>
               </div>
 
-              {/* Speaker Queue */}
+              {/* Speaker Queue — visible for Expert vs Crowd always, other formats only during LIVE,
+                  or if someone is already in the queue */}
+              {(isExpertVsCrowd || session.status !== SessionStatus.WAITING || queueChannel.isInQueue || queueChannel.queue.length > 0) && (
               <div>
                 <Card className="debate-card border-2">
                   <CardHeader className="border-b-2 border-white/30">
@@ -1036,6 +1071,7 @@ export default function RoomClient({
                   </CardContent>
                 </Card>
               </div>
+              )}
 
               {/* Audience (watching, not in queue) */}
               <div>
@@ -1047,8 +1083,9 @@ export default function RoomClient({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-4">
-                    {/* Direct debater upgrade (non-Expert vs Crowd, non-queue path) */}
-                    {canUpgradeToDebater && !isExpertVsCrowd && (
+                    {/* Direct debater upgrade (non-Expert vs Crowd, non-queue path)
+                        Hidden during WAITING — the center waiting area has the primary CTA */}
+                    {canUpgradeToDebater && !isExpertVsCrowd && session.status !== SessionStatus.WAITING && (
                       <div className="mb-4">
                         {session.type === SessionType.PANEL ? (
                           <Button
