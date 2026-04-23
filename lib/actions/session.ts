@@ -113,23 +113,14 @@ export async function getSessionsByFilters(filters?: {
         : { in: Object.values(SessionType) }
     
 
-    // Clean up stale participants: mark as left for ENDED sessions
-    await prisma.participatesIn.updateMany({
-        where: {
-            left_at: null,
-            session: { status: SessionStatus.ENDED },
-        },
-        data: { left_at: new Date() },
-    })
+    // Only return sessions that have at least one active participant
+    sessionsWhere.participates_ins = { some: { left_at: null } }
 
     const sessions = await prisma.session.findMany({
         where: sessionsWhere,
         include: {
-            // host username
             host: { select: { id: true, username: true, realname: true } },
-            // moderator username
             moderator: { select: { id: true, username: true, realname: true } },
-            // participant count (active only)
             _count: { select: { participates_ins: { where: { left_at: null } } } },
         },
         orderBy: { created_at: "desc" },
@@ -644,5 +635,40 @@ export async function updateSessionStatus(sessionId: string, status: SessionStat
         where: { id: sessionId },
         data
     })
-    
+
+}
+
+/**
+ * Purge stale sessions: mark all participants as left for ENDED sessions,
+ * then delete sessions with zero active participants.
+ */
+export async function purgeOldSessions() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("Not authenticated")
+
+    // 1. Mark all participants as left for ENDED sessions
+    await prisma.participatesIn.updateMany({
+        where: {
+            left_at: null,
+            session: { status: SessionStatus.ENDED },
+        },
+        data: { left_at: new Date() },
+    })
+
+    // 2. Delete sessions that have no active participants
+    const emptySessions = await prisma.session.findMany({
+        where: {
+            participates_ins: { none: { left_at: null } },
+        },
+        select: { id: true },
+    })
+
+    if (emptySessions.length > 0) {
+        await prisma.session.deleteMany({
+            where: { id: { in: emptySessions.map(s => s.id) } },
+        })
+    }
+
+    return { deleted: emptySessions.length }
 }

@@ -101,8 +101,8 @@ model ParticipatesIn {
   left_at      DateTime?
   session_role SessionRole @default(AUDIENCE)
 
-  user    User    @relation(fields: [user_id], references: [id])
-  session Session @relation(fields: [session_id], references: [id])
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
 
   @@id([user_id, session_id])
 }
