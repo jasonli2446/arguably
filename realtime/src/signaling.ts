@@ -120,6 +120,39 @@ export function setupSignaling(io: SocketIOServer): void {
         const { roomId, displayName, rtpCapabilities } = parsed.data;
         const room = await getOrCreateRoom(roomId);
 
+        // If same user already has a peer in this room (e.g. hard refresh),
+        // clean up the old one to avoid duplicate streams
+        if (authUserId) {
+          for (const [oldSocketId, existingPeer] of room.peers) {
+            if (existingPeer.userId === authUserId && oldSocketId !== socket.id) {
+              // Close old producers and notify others
+              for (const [producerId, producer] of existingPeer.producers) {
+                producer.close();
+                io.to(roomId).emit("producerClosed", { producerId });
+              }
+              // Cancel grace timer if active
+              const oldStablePeerId = existingPeer.stablePeerId;
+              const graceEntry = gracePeriodTimers.get(oldStablePeerId);
+              if (graceEntry) {
+                clearTimeout(graceEntry.timer);
+                gracePeriodTimers.delete(oldStablePeerId);
+              }
+              removePeerFromRoom(room, oldSocketId);
+              socketRoomMap.delete(oldSocketId);
+              socketPeerMap.delete(oldSocketId);
+              socketToPeerId.delete(oldSocketId);
+              socketUserMap.delete(oldSocketId);
+              socketDebateRoomMap.delete(oldSocketId);
+              io.to(roomId).emit("peerLeft", {
+                peerId: oldSocketId,
+                displayName: existingPeer.displayName,
+              });
+              log.info({}, `Evicted stale peer for same user [userId:${authUserId}, oldSocket:${oldSocketId}]`);
+              break;
+            }
+          }
+        }
+
         const stablePeerId = randomUUID();
 
         const peer: Peer = {
@@ -187,6 +220,20 @@ export function setupSignaling(io: SocketIOServer): void {
           gracePeriodTimers.delete(stablePeerId);
           log.info({}, `Reconnection within grace period [stablePeerId:${stablePeerId}]`);
         }
+
+        // Close old producers and notify other clients so they remove stale streams
+        for (const [producerId, producer] of oldPeer.producers) {
+          producer.close();
+          socket.to(roomId).emit("producerClosed", { producerId });
+        }
+        oldPeer.producers.clear();
+
+        // Close old transports (consumers + transports)
+        for (const { transport } of oldPeer.transports.values()) {
+          transport.close();
+        }
+        oldPeer.transports.clear();
+        oldPeer.consumers.clear();
 
         // Update peer with new socket ID
         room.peers.delete(oldPeer.id);
