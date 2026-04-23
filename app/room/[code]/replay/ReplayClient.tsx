@@ -232,10 +232,10 @@ export default function ReplayClient({ data }: { data: ReplayData }) {
                                 <SkipBack className="w-4 h-4" />
                               </Button>
                               <Button
-                                variant="debate"
+                                variant="ghost"
                                 size="icon"
                                 onClick={player.togglePlayPause}
-                                className="bg-red-600 text-white border-red-600 hover:bg-red-700"
+                                className="text-white hover:bg-white/10"
                               >
                                 {player.isPlaying ? (
                                   <Pause className="w-5 h-5" />
