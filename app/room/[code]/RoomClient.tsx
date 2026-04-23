@@ -202,28 +202,13 @@ export default function RoomClient({
   }, [connectionState])
 
   // Refresh page when participants change (via Supabase Realtime)
+  // Poll for participant changes since Supabase Realtime isn't delivering events
   useEffect(() => {
-    const supabase = createClient()
-    // Test: subscribe without filter to check if Realtime delivers ANY changes
-    const channel = supabase
-      .channel(`participants:${session.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ParticipatesIn',
-        },
-        (payload) => {
-          console.log('[Realtime] ParticipatesIn change:', payload.eventType, payload)
-          router.refresh()
-        },
-      )
-      .subscribe((status, err) => {
-        console.log('[Realtime] subscription status:', status, err ?? '')
-      })
-    return () => { supabase.removeChannel(channel) }
-  }, [session.id, router])
+    const interval = setInterval(() => {
+      router.refresh()
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [router])
 
   // Auto-join as audience when a logged-in non-participant views the room
   useEffect(() => {
