@@ -78,7 +78,12 @@ export async function startDebate(
   if (turnLength < 1 || turnLength > 1800) {
     return { success: false, error: "Turn length must be 1-1800 seconds" };
   }
-  if (debaters.length < 2) {
+  // Format-specific minimum debater counts
+  if (format === "EXPERT_VS_CROWD") {
+    if (debaters.length < 1) {
+      return { success: false, error: "At least 1 debater (the expert) required" };
+    }
+  } else if (debaters.length < 2) {
     return { success: false, error: "At least 2 debaters required" };
   }
 

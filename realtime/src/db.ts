@@ -147,7 +147,7 @@ export async function validateDebaterIds(
   if (userIds.length === 0) return false;
   const { rows } = await pool.query(
     `SELECT user_id FROM "ParticipatesIn"
-     WHERE session_id = $1 AND user_id = ANY($2) AND left_at IS NULL`,
+     WHERE session_id = $1 AND user_id = ANY($2::uuid[]) AND left_at IS NULL`,
     [sessionId, userIds],
   );
   return rows.length === userIds.length;
