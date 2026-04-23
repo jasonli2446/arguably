@@ -121,7 +121,7 @@ export async function getSessionsByFilters(filters?: {
             // moderator username
             moderator: { select: { id: true, username: true, realname: true } },
             // participant count (active for live sessions, total for ended)
-            _count: { select: { participates_ins: true } },
+            _count: { select: { participates_ins: { where: { left_at: null } } } },
         },
         orderBy: { created_at: "desc" },
     })
