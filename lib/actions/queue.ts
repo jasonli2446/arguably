@@ -92,6 +92,7 @@ async function cleanupUserVotes(
 // Exported server actions
 // ---------------------------------------------------------------------------
 
+/** Adds the authenticated audience participant to the session queue. */
 export async function joinQueue(sessionId: string) {
   const user = await requireAuth()
 
@@ -133,6 +134,7 @@ export async function joinQueue(sessionId: string) {
   })
 }
 
+/** Removes the authenticated user from the queue and clears their cast votes. */
 export async function leaveQueue(sessionId: string) {
   const user = await requireAuth()
 
@@ -147,6 +149,7 @@ export async function leaveQueue(sessionId: string) {
   })
 }
 
+/** Returns the ordered audience queue with display names and 1-based ranks. */
 export async function getQueue(sessionId: string) {
   const user = await requireAuth()
   if (!user) throw new Error("Not authenticated")
@@ -168,6 +171,7 @@ export async function getQueue(sessionId: string) {
   }))
 }
 
+/** Promotes a queued audience member to debater, optionally choosing a specific user. */
 export async function promoteFromQueue(sessionId: string, userId?: string) {
   await requireHostOrModerator(sessionId)
 
@@ -221,6 +225,7 @@ export async function promoteFromQueue(sessionId: string, userId?: string) {
   })
 }
 
+/** Casts an audience kick vote and kicks the target if the configured threshold is reached. */
 export async function castKickVote(sessionId: string, targetUserId: string) {
   const user = await requireAuth()
   if (user.id === targetUserId) throw new Error("Cannot vote to kick yourself")
@@ -341,6 +346,7 @@ export async function castKickVote(sessionId: string, targetUserId: string) {
   })
 }
 
+/** Removes the authenticated user's kick vote against a target. */
 export async function removeKickVote(sessionId: string, targetUserId: string) {
   const user = await requireAuth()
 
@@ -354,6 +360,7 @@ export async function removeKickVote(sessionId: string, targetUserId: string) {
   })
 }
 
+/** Returns current kick-vote tally, threshold, and caller vote state for a target. */
 export async function getKickVotes(sessionId: string, targetUserId: string) {
   const user = await requireAuth()
   if (!user) throw new Error("Not authenticated")

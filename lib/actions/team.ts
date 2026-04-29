@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { requireHostOrModerator } from "@/lib/actions/utils"
 import { SessionType } from "@/lib/generated/prisma"
 
+/** Assigns a participant to a TEAM-format side. */
 export async function assignTeam(
   sessionId: string,
   userId: string,
@@ -35,6 +36,7 @@ export async function assignTeam(
   })
 }
 
+/** Lists team assignments for a session with lightweight user details. */
 export async function getTeamAssignments(sessionId: string) {
   return await prisma.teamAssignment.findMany({
     where: { session_id: sessionId },
@@ -45,6 +47,7 @@ export async function getTeamAssignments(sessionId: string) {
   })
 }
 
+/** Removes a user's team assignment after host or moderator authorization. */
 export async function removeFromTeam(sessionId: string, userId: string) {
   await requireHostOrModerator(sessionId)
 

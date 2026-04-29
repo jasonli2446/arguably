@@ -97,6 +97,7 @@ interface UseMediasoupReturn {
   reconnect: () => void
 }
 
+/** Emits an SFU Socket.IO event and rejects when the server acknowledgement is unsuccessful. */
 function request(socket: Socket, event: string, data: Record<string, unknown> = {}): Promise<SfuAckResponse> {
   return new Promise((resolve, reject) => {
     socket.emit(event, data, (response: SfuAckResponse) => {
@@ -109,6 +110,7 @@ function request(socket: Socket, event: string, data: Record<string, unknown> = 
   })
 }
 
+/** Manages mediasoup client setup, local media publishing, remote consumption, and reconnect cleanup. */
 export function useMediasoup({
   sfuUrl,
   roomId,

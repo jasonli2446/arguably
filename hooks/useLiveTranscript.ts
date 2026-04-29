@@ -15,6 +15,7 @@ interface UseLiveTranscriptOptions {
 
 const TRANSCRIPT_CHUNK_MS = 6000
 
+/** Sorts transcript segments by spoken time, then creation time for deterministic UI order. */
 function sortSegments(segments: TranscriptSegmentView[]) {
   return [...segments].sort((a, b) => {
     const startedDelta = new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
@@ -23,6 +24,7 @@ function sortSegments(segments: TranscriptSegmentView[]) {
   })
 }
 
+/** Replaces or appends a transcript segment and returns a sorted list. */
 function mergeSegmentList(
   existing: TranscriptSegmentView[],
   incoming: TranscriptSegmentView,
@@ -32,6 +34,7 @@ function mergeSegmentList(
   return sortSegments(next)
 }
 
+/** Picks the first browser-supported audio MIME type for MediaRecorder chunks. */
 function getSupportedMimeType() {
   if (typeof MediaRecorder === 'undefined') {
     return null
@@ -46,6 +49,7 @@ function getSupportedMimeType() {
   return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? null
 }
 
+/** Maps a Supabase realtime TranscriptSegment row into the client transcript view shape. */
 function mapRealtimeSegment(row: Record<string, unknown>): TranscriptSegmentView {
   return {
     id: String(row.id),
@@ -63,6 +67,7 @@ function mapRealtimeSegment(row: Record<string, unknown>): TranscriptSegmentView
   }
 }
 
+/** Captures live audio chunks, uploads them for transcription, and subscribes to transcript inserts. */
 export function useLiveTranscript({
   sessionId,
   currentUserId,

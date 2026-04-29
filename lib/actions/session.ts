@@ -7,6 +7,7 @@ import { redirect } from "next/navigation"
 import { Prisma, SessionRole, SessionStatus, SessionType } from "@/lib/generated/prisma"
 import { doPromoteFromQueue, cleanupUserVotes } from "@/lib/actions/queue"
 
+/** Creates a debate session for the authenticated host and redirects to its room. */
 export async function createSession(formData: {
     name: string
     description?: string
@@ -92,6 +93,7 @@ export async function createSession(formData: {
     redirect(`/room/${session.code}`)
 }
 
+/** Returns sessions matching optional search, type, and status filters. */
 export async function getSessionsByFilters(filters?: {
     search?: string
     types?: SessionType[]
@@ -129,6 +131,7 @@ export async function getSessionsByFilters(filters?: {
     return sessions ?? []
 }
 
+/** Loads a session by public code with active participants, host, moderator, and teams. */
 export async function getSessionByCode(code: string) {
     
     const session = await prisma.session.findUnique({
@@ -155,6 +158,7 @@ export async function getSessionByCode(code: string) {
     
 }
 
+/** Adds or rejoins the authenticated user as an audience participant. */
 export async function joinSession(sessionId: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -232,6 +236,7 @@ export async function joinSession(sessionId: string) {
     }
 }
 
+/** Adds or upgrades the authenticated user to a debater role on the selected side. */
 export async function joinSessionAsDebater(sessionId: string, isProponent: boolean) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -340,6 +345,7 @@ export async function joinSessionAsDebater(sessionId: string, isProponent: boole
     }
 }
 
+/** Marks the authenticated participant as left and promotes a queued replacement when needed. */
 export async function leaveSession(sessionId: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -397,6 +403,7 @@ export async function leaveSession(sessionId: string) {
     })
 }
 
+/** Assigns an active participant as moderator, replacing any prior moderator. */
 export async function assignModerator(sessionId: string, targetUserId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -463,6 +470,7 @@ export async function assignModerator(sessionId: string, targetUserId: string) {
   await prisma.$transaction(txOps)
 }
 
+/** Removes a participant by host or moderator action and repairs turn state when needed. */
 export async function kickParticipant(sessionId: string, targetUserId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -543,6 +551,7 @@ export async function kickParticipant(sessionId: string, targetUserId: string) {
   }
 }
 
+/** Promotes an audience participant to debater before the debate starts. */
 export async function promoteToDebater(sessionId: string, targetUserId: string, team?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -592,6 +601,7 @@ export async function promoteToDebater(sessionId: string, targetUserId: string, 
   })
 }
 
+/** Returns public aggregate live-session and active-participant counts. */
 export async function getLandingPageStats() {
     const [liveSessionCount, activeParticipantCount] = await Promise.all([
         prisma.session.count({
@@ -608,6 +618,7 @@ export async function getLandingPageStats() {
     return { liveSessionCount, activeParticipantCount }
 }
 
+/** Updates session status after host or moderator authorization and start validation. */
 export async function updateSessionStatus(sessionId: string, status: SessionStatus) {
     
     const supabase = await createClient()
@@ -666,10 +677,7 @@ export async function updateSessionStatus(sessionId: string, status: SessionStat
 
 }
 
-/**
- * Purge stale sessions: mark all participants as left for ENDED sessions,
- * then delete sessions with zero active participants.
- */
+/** Marks participants left in ended sessions, then deletes sessions with no active participants. */
 export async function purgeOldSessions() {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

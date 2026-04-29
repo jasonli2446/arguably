@@ -873,6 +873,7 @@ function SettingsTab() {
 
 // ── Main component ──
 
+/** Client dashboard for admin user management, session controls, platform config, and audit logs. */
 export default function AdminClient({ initialStats, initialAuditLog }: AdminClientProps) {
   return (
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">

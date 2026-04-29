@@ -53,6 +53,7 @@ function deepMerge<T extends Record<string, unknown>>(
   return result
 }
 
+/** Account settings editor for profile fields, preferences, and account deletion. */
 export default function SettingsClient({ profile }: { profile: UserProfile }) {
   const router = useRouter()
 

@@ -1,6 +1,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
+/** Root avatar frame with consistent sizing and clipping. */
 const Avatar = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -16,6 +17,7 @@ const Avatar = React.forwardRef<
 ))
 Avatar.displayName = "Avatar"
 
+/** Image slot for the avatar frame. */
 const AvatarImage = React.forwardRef<
   HTMLImageElement,
   React.ImgHTMLAttributes<HTMLImageElement>
@@ -28,6 +30,7 @@ const AvatarImage = React.forwardRef<
 ))
 AvatarImage.displayName = "AvatarImage"
 
+/** Fallback content shown when the avatar image is unavailable. */
 const AvatarFallback = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>

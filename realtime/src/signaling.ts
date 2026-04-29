@@ -53,13 +53,12 @@ const gracePeriodTimers = new Map<string, {
 const lastScoreLog = new Map<string, number>();
 const SCORE_LOG_INTERVAL_MS = 10_000;
 
+/** Returns the number of peers currently inside reconnect grace periods. */
 export function getGracePeriodCount(): number {
   return gracePeriodTimers.size;
 }
 
-/**
- * Helper to collect all active producers from a room, excluding closed ones.
- */
+/** Collects active producers in a room, excluding the requesting socket and closed producers. */
 function collectRoomProducers(room: ReturnType<typeof getRoom>, excludeSocketId: string) {
   const producers: Array<{
     producerId: string;
@@ -86,6 +85,7 @@ function collectRoomProducers(room: ReturnType<typeof getRoom>, excludeSocketId:
   return producers;
 }
 
+/** Registers SFU media, reconnect, moderation, and debate Socket.IO handlers. */
 export function setupSignaling(io: SocketIOServer): void {
   io.on("connection", (socket: Socket) => {
     log.info({ socketId: socket.id }, "Socket connected");

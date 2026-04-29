@@ -8,6 +8,7 @@ import {
   getKickVotes as getKickVotesAction,
 } from '@/lib/actions/queue'
 
+/** Vote tally and current-user vote state for one kick target. */
 export interface KickVoteState {
   voteCount: number
   requiredVotes: number
@@ -20,6 +21,7 @@ interface UseKickVoteChannelOptions {
   debaterIds: string[]
 }
 
+/** Subscribes to kick-vote changes and exposes vote mutation helpers for current debaters. */
 export function useKickVoteChannel({
   sessionId,
   userId,

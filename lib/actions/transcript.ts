@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { requireParticipant } from "@/lib/actions/utils"
 import { listTranscriptSegments } from "@/lib/transcripts"
 
+/** Creates a legacy transcript row for the authenticated participant. */
 export async function createTranscriptSegment(
   sessionId: string,
   content: string,
@@ -25,6 +26,7 @@ export async function createTranscriptSegment(
   })
 }
 
+/** Returns legacy transcript rows for an active participant in timestamp order. */
 export async function getTranscriptBySession(sessionId: string) {
   await requireParticipant(sessionId)
 
@@ -37,6 +39,7 @@ export async function getTranscriptBySession(sessionId: string) {
   })
 }
 
+/** Returns live transcript segments for an active participant. */
 export async function getTranscriptSegments(sessionId: string) {
   await requireParticipant(sessionId)
 

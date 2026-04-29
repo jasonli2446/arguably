@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useUserRole } from '@/components/UserContext'
 
+/** Responsive floating navigation that adapts to auth state, scroll position, and admin role. */
 export default function FloatingNav() {
   const [isOpen, setIsOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)

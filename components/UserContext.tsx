@@ -10,10 +10,12 @@ interface UserContextValue {
 
 const UserContext = createContext<UserContextValue>({ role: null })
 
+/** Returns the current user's platform role as loaded from the profile context. */
 export function useUserRole() {
   return useContext(UserContext).role
 }
 
+/** Provides the authenticated user's role and keeps it in sync with Supabase auth events. */
 export function UserProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<string | null>(null)
 

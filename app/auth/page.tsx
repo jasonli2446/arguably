@@ -8,6 +8,7 @@ import { ArrowRight, Mail, Lock, Zap, Shield, Users } from "lucide-react"
 import { ensureUserProfile } from "@/lib/actions/user"
 import { validatePassword, getPasswordStrength } from "@/lib/validation"
 
+/** Authentication page for Supabase sign-in and sign-up, including profile bootstrap. */
 export default function AuthPage() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState("")

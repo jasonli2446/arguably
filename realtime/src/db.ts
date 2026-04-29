@@ -12,6 +12,7 @@ const pool = new pg.Pool({
 
 // ── Types mirroring Prisma schema ──
 
+/** Database shape of the persisted DebateState row used by realtime recovery. */
 export interface DbDebateState {
   id: string;
   session_id: string;
@@ -27,6 +28,7 @@ export interface DbDebateState {
   version: number;
 }
 
+/** Minimal database session shape required by realtime authorization and lookup. */
 export interface DbSession {
   id: string;
   code: string;
@@ -37,6 +39,7 @@ export interface DbSession {
 
 // ── Queries ──
 
+/** Upserts the current debate state snapshot for restart recovery and replay logs. */
 export async function persistDebateState(state: {
   id: string;
   sessionId: string;
@@ -77,6 +80,7 @@ export async function persistDebateState(state: {
   );
 }
 
+/** Loads one persisted debate state by database session id. */
 export async function loadDebateState(
   sessionId: string,
 ): Promise<DbDebateState | null> {
@@ -87,6 +91,7 @@ export async function loadDebateState(
   return rows[0] ?? null;
 }
 
+/** Loads all non-ended debate states for realtime server restart recovery. */
 export async function loadAllActiveDebates(): Promise<DbDebateState[]> {
   const { rows } = await pool.query(
     `SELECT * FROM "DebateState" WHERE phase != 'ENDED'`,
@@ -94,6 +99,7 @@ export async function loadAllActiveDebates(): Promise<DbDebateState[]> {
   return rows;
 }
 
+/** Inserts a turn transition record for replay analytics. */
 export async function logTurnTransition(entry: {
   debateStateId: string;
   speakerUserId: string | null;
@@ -124,12 +130,14 @@ export async function logTurnTransition(entry: {
   );
 }
 
+/** Deletes persisted debate state for a session. */
 export async function deleteDebateState(sessionId: string): Promise<void> {
   await pool.query(`DELETE FROM "DebateState" WHERE session_id = $1`, [
     sessionId,
   ]);
 }
 
+/** Resolves a public room code to minimal database session details. */
 export async function getSessionByCode(
   code: string,
 ): Promise<DbSession | null> {
@@ -140,6 +148,7 @@ export async function getSessionByCode(
   return rows[0] ?? null;
 }
 
+/** Filters requested user ids down to active participants in a session. */
 export async function filterActiveDebaterIds(
   sessionId: string,
   userIds: string[],
@@ -153,6 +162,7 @@ export async function filterActiveDebaterIds(
   return rows.map((r: { user_id: string }) => r.user_id);
 }
 
+/** Resolves a database session id back to its public room code. */
 export async function getSessionCodeById(
   sessionId: string,
 ): Promise<string | null> {
@@ -163,6 +173,7 @@ export async function getSessionCodeById(
   return rows[0]?.code ?? null;
 }
 
+/** Checks whether a user can moderate realtime debate controls for a session. */
 export async function isHostOrModerator(
   sessionId: string,
   userId: string,
@@ -175,6 +186,7 @@ export async function isHostOrModerator(
   return rows.length > 0;
 }
 
+/** Marks a participant as left if they are still active in a session. */
 export async function markParticipantLeft(
   sessionId: string,
   userId: string,
@@ -187,6 +199,7 @@ export async function markParticipantLeft(
   );
 }
 
+/** Removes a user from a session's audience queue. */
 export async function removeFromAudienceQueue(
   sessionId: string,
   userId: string,

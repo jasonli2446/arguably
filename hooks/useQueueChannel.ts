@@ -8,6 +8,7 @@ import {
   leaveQueue as leaveQueueAction,
 } from '@/lib/actions/queue'
 
+/** Client view of one audience queue entry, including 1-based rank. */
 export interface QueueEntry {
   id: string
   userId: string
@@ -21,6 +22,7 @@ interface UseQueueChannelOptions {
   userId: string | null
 }
 
+/** Subscribes to audience queue changes and exposes current-user queue actions. */
 export function useQueueChannel({ sessionId, userId }: UseQueueChannelOptions) {
   const [queue, setQueue] = useState<QueueEntry[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)

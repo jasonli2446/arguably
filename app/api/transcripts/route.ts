@@ -11,6 +11,7 @@ function badRequest(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status })
 }
 
+/** Accepts an authenticated speaker audio chunk, transcribes it, stores it, and queues claim detection. */
 export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

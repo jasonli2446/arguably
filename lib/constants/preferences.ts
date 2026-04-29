@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+/** Default user preference values applied to new or partially configured profiles. */
 export const DEFAULT_PREFERENCES = {
     notifications: {
         debateInvitations: true,
@@ -23,8 +24,10 @@ export const DEFAULT_PREFERENCES = {
     },
 }
 
+/** Static TypeScript preference shape inferred from the default preference object. */
 export type UserPreferences = typeof DEFAULT_PREFERENCES
 
+/** Runtime schema for validating persisted user preference payloads. */
 export const preferencesSchema = z.object({
     notifications: z.object({
         debateInvitations: z.boolean(),

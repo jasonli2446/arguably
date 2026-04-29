@@ -16,6 +16,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void | Promise<void>
 }
 
+/** Confirmation modal with optional destructive styling and loading state. */
 export function ConfirmDialog({
   open,
   onOpenChange,

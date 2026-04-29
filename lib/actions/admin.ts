@@ -32,6 +32,7 @@ const configUpdateSchema = z.object({
 
 // ── Dashboard ──
 
+/** Returns aggregate counts for the admin dashboard. */
 export async function getAdminDashboardStats() {
   await requireAdmin()
 
@@ -57,6 +58,7 @@ export async function getAdminDashboardStats() {
 
 // ── User management ──
 
+/** Lists users for admin review with optional search and pagination. */
 export async function getAdminUsers(params: {
   search?: string
   page?: number
@@ -100,6 +102,7 @@ export async function getAdminUsers(params: {
   return { users, total, page, limit, totalPages: Math.ceil(total / limit) }
 }
 
+/** Bans a user account and records the admin audit entry. */
 export async function adminBanUser(userId: string, reason: string) {
   const admin = await requireAdmin()
 
@@ -129,6 +132,7 @@ export async function adminBanUser(userId: string, reason: string) {
   ])
 }
 
+/** Removes a user's ban and suspension state and records the admin audit entry. */
 export async function adminUnbanUser(userId: string) {
   const admin = await requireAdmin()
 
@@ -161,6 +165,7 @@ export async function adminUnbanUser(userId: string) {
   ])
 }
 
+/** Suspends a user until a future timestamp and records the admin audit entry. */
 export async function adminSuspendUser(
   userId: string,
   until: string,
@@ -199,6 +204,7 @@ export async function adminSuspendUser(
   ])
 }
 
+/** Changes a user's platform role and records the admin audit entry. */
 export async function adminChangeUserRole(
   userId: string,
   newRole: UniversalRole
@@ -237,6 +243,7 @@ export async function adminChangeUserRole(
 
 // ── Session management ──
 
+/** Lists sessions for admin review with optional search, status filter, and pagination. */
 export async function getAdminSessions(params: {
   search?: string
   status?: SessionStatus
@@ -284,6 +291,7 @@ export async function getAdminSessions(params: {
   return { sessions, total, page, limit, totalPages: Math.ceil(total / limit) }
 }
 
+/** Force-ends an active session and marks any debate state as ended. */
 export async function adminForceEndSession(sessionId: string) {
   const admin = await requireAdmin()
 
@@ -318,6 +326,7 @@ export async function adminForceEndSession(sessionId: string) {
 
 // ── Platform config ──
 
+/** Returns the singleton platform configuration, creating it when missing. */
 export async function getPlatformConfig() {
   await requireAdmin()
 
@@ -328,6 +337,7 @@ export async function getPlatformConfig() {
   })
 }
 
+/** Updates the singleton platform configuration after schema validation. */
 export async function updatePlatformConfig(
   data: z.infer<typeof configUpdateSchema>
 ) {
@@ -356,6 +366,7 @@ export async function updatePlatformConfig(
 
 // ── Audit log ──
 
+/** Returns paginated admin audit log entries. */
 export async function getAdminAuditLog(params: {
   page?: number
   limit?: number

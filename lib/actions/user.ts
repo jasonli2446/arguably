@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { Prisma } from "@/lib/generated/prisma"
 import { preferencesSchema, type UserPreferences } from "@/lib/constants/preferences"
 
+/** Ensures the current Supabase user has a valid local profile row. */
 export async function ensureUserProfile() {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -42,6 +43,7 @@ export async function ensureUserProfile() {
     return result
 }
 
+/** Returns the current user's editable profile fields, or null when unauthenticated. */
 export async function getUserProfile() {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -63,6 +65,7 @@ export async function getUserProfile() {
     return profile
 }
 
+/** Validates and updates the current user's profile and preferences. */
 export async function updateUserProfile(data: {
     username?: string
     realname?: string
@@ -116,6 +119,7 @@ export async function updateUserProfile(data: {
     }
 }
 
+/** Soft-deletes the current user and removes their active session footprint. */
 export async function deleteAccount() {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

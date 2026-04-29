@@ -71,6 +71,7 @@ interface SessionData {
   detectedClaims: ClaimView[]
 }
 
+/** Live debate room client that coordinates media, turns, transcript, claims, queue, and moderation. */
 export default function RoomClient({
   session,
   currentUserId,

@@ -10,6 +10,7 @@ interface VideoPanelProps {
   className?: string
 }
 
+/** Displays a local or remote media stream with a labeled placeholder when no stream is present. */
 export default function VideoPanel({ stream, muted, label, mirror = false, className = '' }: VideoPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
 

@@ -66,6 +66,7 @@ const codeToSessionId = new Map<string, string>();
 
 // ── Public API ──
 
+/** Starts an in-memory realtime debate, persists state, schedules timers, and broadcasts first turn. */
 export async function startDebate(
   roomCode: string,
   debaters: DebateParticipant[],
@@ -171,6 +172,7 @@ export async function startDebate(
   return { success: true };
 }
 
+/** Advances the active debate turn with debounce/version guards and transition logging. */
 export async function advanceTurn(
   roomCode: string,
   reason: TurnReason,
@@ -249,6 +251,7 @@ export async function advanceTurn(
   return { success: true };
 }
 
+/** Pauses an active realtime debate and broadcasts remaining time. */
 export async function pauseDebate(
   roomCode: string,
   io: SocketIOServer,
@@ -282,6 +285,7 @@ export async function pauseDebate(
   return { success: true };
 }
 
+/** Resumes a paused realtime debate and reschedules timers for remaining time. */
 export async function resumeDebate(
   roomCode: string,
   io: SocketIOServer,
@@ -313,6 +317,7 @@ export async function resumeDebate(
   return { success: true };
 }
 
+/** Ends a realtime debate, logs the final turn, persists ended phase, and clears memory state. */
 export async function endDebate(
   roomCode: string,
   io: SocketIOServer,
@@ -354,6 +359,7 @@ export async function endDebate(
   return { success: true };
 }
 
+/** Returns a serializable snapshot of current in-memory debate state. */
 export function getState(roomCode: string): DebateStatePayload | null {
   const state = debates.get(roomCode);
   if (!state) return null;
@@ -378,6 +384,7 @@ export function getState(roomCode: string): DebateStatePayload | null {
   };
 }
 
+/** Advances the turn when the disconnected user is the current active speaker. */
 export async function handleSpeakerDisconnect(
   roomCode: string,
   userId: string,
@@ -392,6 +399,7 @@ export async function handleSpeakerDisconnect(
   }
 }
 
+/** Extends an active, grace, or paused turn and broadcasts refreshed timing state. */
 export async function extendTurn(
   roomCode: string,
   extraSeconds: number,
@@ -462,6 +470,7 @@ export async function extendTurn(
   return { success: true };
 }
 
+/** Checks whether a user may control debate state for a room code. */
 export async function checkAuthorization(
   roomCode: string,
   userId: string,
@@ -478,6 +487,7 @@ export async function checkAuthorization(
 
 // ── Restart Recovery ──
 
+/** Rehydrates all persisted active debates after realtime server restart. */
 export async function recoverDebates(io: SocketIOServer): Promise<void> {
   try {
     const rows = await loadAllActiveDebates();
@@ -570,6 +580,7 @@ async function recoverDebateFromRow(
  * Load debate state from DB when a client requests it but the server
  * doesn't have it in memory (e.g., server restarted and no one re-joined yet).
  */
+/** Gets debate state from memory, or loads and recovers it from the database on demand. */
 export async function getOrLoadState(
   roomCode: string,
   io: SocketIOServer,

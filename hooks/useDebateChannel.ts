@@ -51,7 +51,7 @@ interface TurnWarningPayload { secondsRemaining: number }
 interface DebatePausedPayload { version: number; timeRemaining: number }
 interface DebateResumedPayload { version: number; turnStartedAt: number; turnLength: number }
 
-// Socket.io emit with ack helper (10s timeout to prevent indefinite hangs)
+/** Emits a Socket.IO event with acknowledgement and a 10s timeout guard. */
 function request(socket: IoSocket, event: string, data: Record<string, unknown> = {}): Promise<SocketResponse> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -69,6 +69,7 @@ function request(socket: IoSocket, event: string, data: Record<string, unknown> 
   })
 }
 
+/** Connects to the realtime debate channel and exposes turn state plus moderator actions. */
 export function useDebateChannel({
   sfuUrl,
   roomCode,

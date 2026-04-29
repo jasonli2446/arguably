@@ -1,3 +1,4 @@
+/** Forces replay access checks and analytics payloads to run per request. */
 export const dynamic = 'force-dynamic'
 
 import { createClient } from '@/lib/supabase/server'
@@ -7,6 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { SessionStatus } from '@/lib/generated/prisma'
 import ReplayClient from './ReplayClient'
 
+/** Server replay page that gates ended sessions and fetches analytics-backed replay data. */
 export default async function ReplayPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
 

@@ -3,6 +3,7 @@
  * Separated from server actions for testability.
  */
 
+/** Raw persisted turn log shape used as analytics input. */
 export interface TurnLogEntry {
   id: string
   speaker_user_id: string | null
@@ -14,6 +15,7 @@ export interface TurnLogEntry {
   duration_sec: number
 }
 
+/** Raw transcript shape used to compute replay word counts. */
 export interface TranscriptEntry {
   id: string
   speaker_id: string
@@ -22,6 +24,7 @@ export interface TranscriptEntry {
   duration: number | null
 }
 
+/** Per-speaker aggregate metrics for an ended debate. */
 export interface ParticipantStats {
   speakerId: string
   speakerName: string
@@ -33,6 +36,7 @@ export interface ParticipantStats {
   speakingTimePercent: number // 0-100
 }
 
+/** Session-level aggregate metrics for an ended debate. */
 export interface SessionStats {
   debateDuration: number // seconds
   totalTurns: number
@@ -41,6 +45,7 @@ export interface SessionStats {
   debateEndTime: Date | null
 }
 
+/** Turn interval normalized to seconds from debate start for replay timelines. */
 export interface NormalizedTurn {
   speakerId: string | null
   speakerName: string
@@ -51,6 +56,7 @@ export interface NormalizedTurn {
   durationSec: number
 }
 
+/** Computes duration, turn count, and start/end timestamps from raw turn logs. */
 export function computeSessionStats(turnLogs: TurnLogEntry[]): SessionStats {
   if (turnLogs.length === 0) {
     return { debateDuration: 0, totalTurns: 0, totalWords: 0, debateStartTime: null, debateEndTime: null }
@@ -75,6 +81,7 @@ export function computeSessionStats(turnLogs: TurnLogEntry[]): SessionStats {
   }
 }
 
+/** Computes per-participant speaking-time and transcript word-count analytics. */
 export function computeParticipantStats(
   turnLogs: TurnLogEntry[],
   transcripts: TranscriptEntry[],
@@ -129,6 +136,7 @@ export function computeParticipantStats(
   return stats
 }
 
+/** Converts raw turn logs into replay-friendly offsets from the debate start timestamp. */
 export function normalizeTurnLogs(
   turnLogs: TurnLogEntry[],
   debateStartTime: Date
@@ -148,6 +156,7 @@ export function normalizeTurnLogs(
     }))
 }
 
+/** Formats participant and session analytics as a CSV export string. */
 export function formatAnalyticsCsv(
   participantStats: ParticipantStats[],
   sessionStats: SessionStats

@@ -45,6 +45,7 @@ const STATUS_COLORS: Record<string, string> = {
   ENDED: 'bg-blue-600',
 }
 
+/** Interactive session browser with client-side search, filters, and join handling. */
 export default function BrowseClient({ sessions }: { sessions: SessionData[] }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [joiningId, setJoiningId] = useState<string | null>(null)

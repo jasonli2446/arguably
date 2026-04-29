@@ -5,6 +5,7 @@ import { workerSettings, NUM_WORKERS } from "../config.js";
 const workers: Worker[] = [];
 let nextWorkerIdx = 0;
 
+/** Starts the configured mediasoup worker pool and exits on worker death. */
 export async function createWorkers(): Promise<void> {
   for (let i = 0; i < NUM_WORKERS; i++) {
     const worker = await mediasoup.createWorker(workerSettings);
@@ -19,6 +20,7 @@ export async function createWorkers(): Promise<void> {
   }
 }
 
+/** Returns the next mediasoup worker using round-robin selection. */
 export function getNextWorker(): Worker {
   if (workers.length === 0) {
     throw new Error("No mediasoup workers available");
@@ -28,6 +30,7 @@ export function getNextWorker(): Worker {
   return worker;
 }
 
+/** Returns the number of live workers in the local pool. */
 export function getWorkerCount(): number {
   return workers.length;
 }

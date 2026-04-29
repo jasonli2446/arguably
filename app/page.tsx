@@ -8,6 +8,7 @@ import Link from 'next/link'
 import FloatingNav from '@/components/FloatingNav'
 import { getLandingPageStats } from '@/lib/actions/session'
 
+/** Public landing page with live platform stats and primary navigation calls to action. */
 export default function Home() {
   const [stats, setStats] = useState<{ liveSessionCount: number; activeParticipantCount: number } | null>(null)
 

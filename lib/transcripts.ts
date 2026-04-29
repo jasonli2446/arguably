@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 
+/** Client-safe transcript segment emitted by live transcription and replay views. */
 export interface TranscriptSegmentView {
   id: string
   sessionId: string
@@ -57,6 +58,7 @@ function toTranscriptView(segment: {
   }
 }
 
+/** Lists transcript segments for a session in spoken-time order. */
 export async function listTranscriptSegments(sessionId: string): Promise<TranscriptSegmentView[]> {
   const segments = await prisma.transcriptSegment.findMany({
     where: { session_id: sessionId },
@@ -69,6 +71,7 @@ export async function listTranscriptSegments(sessionId: string): Promise<Transcr
   return segments.map(toTranscriptView)
 }
 
+/** Upserts one transcript segment by session, speaker, and chunk index. */
 export async function saveTranscriptSegment(input: SaveTranscriptSegmentInput): Promise<TranscriptSegmentView> {
   const segment = await prisma.transcriptSegment.upsert({
     where: {

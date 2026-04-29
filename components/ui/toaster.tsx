@@ -2,6 +2,7 @@
 
 import { Toaster as Sonner } from 'sonner'
 
+/** App-level Sonner toast host using the dark debate visual style. */
 export function Toaster() {
   return (
     <Sonner
