@@ -1,0 +1,8 @@
+{
+  "entryPoints": ["app", "lib", "components", "hooks", "realtime"],
+  "exclude": [
+    "**/__tests__/**",
+    "**/tests/**"
+  ],
+  "out": "docs/typedoc"
+}
