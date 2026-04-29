@@ -1,42 +1,5 @@
 **Live URL: [Arguably](https://arguably.vercel.app/)**
 
-# For Developers
-
-### Getting Started on Local Development
-
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-### Learn More about Next.js Framework
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-### Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
 # Project Description
 
 **Arguably** is an online debate platform where designed specifically to structure, moderate, 
@@ -62,7 +25,68 @@ We used **OpenAI** for speech transcription and real-time fact-checking during l
 
 # Setup Steps
 
-One can access Arguably by visiting the Vercel deployment link: https://arguably.vercel.app/.
+The fastest way to try Arguably is the live deployment: https://arguably.vercel.app/.
+
+To run locally, you need **Node.js 20+**, **npm**, and a **Supabase project** (free tier works) for auth and the PostgreSQL database. Live transcription and claim detection additionally require **OpenAI** and **Gemini** API keys.
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/jasonli2446/arguably.git
+cd arguably
+npm install            # postinstall runs `prisma generate` automatically
+npm install --prefix realtime
+```
+
+### 2. Configure environment variables
+
+Copy `.env.example` to `.env` in the project root and fill in the values:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `DATABASE_URL` | yes | Supabase Postgres connection string (port 5432) |
+| `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Supabase anon key |
+| `NEXT_PUBLIC_SFU_URL` | yes | URL of the realtime SFU (e.g. `http://localhost:3001` for local dev) |
+| `OPENAI_API_KEY` | optional | Required only for live transcription |
+| `GEMINI_API_KEY` | optional | Required only for AI claim detection |
+| `TEST_USER_EMAIL` / `TEST_USER_PASSWORD` | optional | Used by Playwright E2E tests; the user must exist in Supabase Auth |
+
+Then copy `realtime/.env.example` to `realtime/.env` and set at minimum `ANNOUNCED_IP=127.0.0.1` and `LISTEN_PORT=3001` for local development.
+
+### 3. Push the database schema
+
+```bash
+npx prisma db push     # creates all tables in your Supabase Postgres
+```
+
+### 4. Start the realtime server (separate process)
+
+The WebRTC SFU runs as a standalone Node.js process. From the project root:
+
+```bash
+npm run realtime:dev   # starts mediasoup + Socket.IO on port 3001
+```
+
+Alternatively, run it in Docker (includes a TURN server for NAT traversal):
+
+```bash
+npm run realtime:docker:up
+```
+
+### 5. Start the Next.js web app
+
+In a separate terminal:
+
+```bash
+npm run dev            # http://localhost:3000
+```
+
+Open [http://localhost:3000](http://localhost:3000), sign up, then create or join a room. Video, audio, and turn-taking will only work while the realtime server from step 4 is running.
 
 # Usage Example
 

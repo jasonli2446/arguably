@@ -1,107 +1,81 @@
 ## Overview
 
-Arguably uses unit tests, integration tests, mock-based tests, and end-to-end (E2E) tests to ensure functionality.
+Arguably is verified at three layers:
 
-The testing stack includes:
+1. **Unit / mock tests** — Vitest, located in `__tests__/` (excluding the SFU subfolders)
+2. **End-to-end tests** — Playwright, located in `tests/`
+3. **Real-time SFU tests** — Vitest with simulated Socket.IO clients, located in `__tests__/sfu/`, `__tests__/realtime/`, and `__tests__/security/auth.test.ts`, run with a dedicated config (`vitest.sfu.config.ts`)
 
-* Vitest (unit, integration, and mock testing)
-* Playwright (E2E testing)
-* Real-time testing utilities using Socket.IO and mediasoup simulation
+All three layers also run automatically on every push and pull request via GitHub Actions (`.github/workflows/unit-tests.yml`, `e2e-tests.yml`, `sfu-tests.yml`).
 
+## Where the tests live
 
-## 1. Unit, Integration, and Mock Tests
+| Location | Purpose | Runner |
+|----------|---------|--------|
+| `__tests__/` (excluding `sfu/`, `realtime/`, `security/auth.test.ts`) | Unit and integration tests for the Next.js app — server actions, hooks, helpers, UI components, mocked Prisma/Supabase | Vitest (`vitest.config.ts`) |
+| `__tests__/sfu/`, `__tests__/realtime/`, `__tests__/security/auth.test.ts` | Unit tests for the SFU — auth, validation, debate engine, signaling helpers | Vitest (`vitest.sfu.config.ts`) |
+| `tests/` | End-to-end browser tests — auth flow, room creation, browse page, joining a live debate | Playwright (`playwright.config.ts`) |
+| `playwright-report/` | HTML report from the most recent Playwright run | — |
 
-Unit, integration, and mock tests are implemented using Vitest and are located in the `__tests__` directory. These tests focus on verifying individual modules, functions, and components in isolation or controlled environments.
+## What is covered
 
-Unit tests validate the correctness of utility functions and services.
+**Unit / integration (Vitest):**
+- Server Actions in `lib/actions/` (session creation, role transitions, profile upsert) with a mocked Prisma client
+- Authentication helpers and Supabase client initialization
+- Custom hooks (`useDebateState`, `useMediasoup`) under controlled state
+- UI components in `components/ui/` rendered with `@testing-library/react`
 
+**Realtime SFU (Vitest):**
+- Supabase JWT verification in `realtime/src/auth.ts`
+- Zod input validation in `realtime/src/validation.ts`
+- Debate Flow Engine state machine in `realtime/src/debate.ts` — turn advancement, pause/resume, queue ordering
+- Socket.IO event handler logic with mocked sockets
 
-Integration tests ensure that testing API handlers do not rely on external systems.
+**End-to-end (Playwright):**
+- Sign-up and sign-in flows against a real Supabase project
+- Room creation wizard for all four debate formats
+- Browse page filtering and joining a session
+- Two-client smoke test for the realtime room (peer joins, video producer registers)
 
+## How to run the tests
 
-Mock tests simulate dependencies using mock objects for deterministic testing.
+Prerequisites:
+- Node.js 20+
+- Repository installed per the README "Setup Steps" section (`npm install`, `.env` filled in, `npx prisma db push` run against a Supabase database)
+- For E2E tests: `TEST_USER_EMAIL` and `TEST_USER_PASSWORD` set in `.env` and the matching user already created in Supabase Auth
 
-In particular, mocking is a key part of the test suite and is fully supported by Vitest. It is used to isolate components by replacing external dependencies such as:
-* Database operations (e.g., Prisma client)
-* Authentication services
-* External APIs (e.g., AI transcription services)
-* WebSocket and real-time event handlers
+Commands (from the project root):
 
+```bash
+npm run test:unit       # Vitest unit + integration suite for the Next.js app
+npm run test:sfu        # Vitest suite for the realtime SFU (uses vitest.sfu.config.ts)
+npm run test:e2e        # Playwright end-to-end suite (alias: npm run test)
+npx playwright show-report   # open the HTML report after an E2E run
+```
 
-The scope of these testing strategies includes:
-* Authentication logic
-* Utility and helper functions
-* API route handlers (with mocked dependencies)
-* Component behavior under controlled props and state
+The Playwright config auto-starts `next dev` on port 3000 (see `playwright.config.ts`), so you do not need a separate dev server for E2E. The realtime SFU is **not** auto-started by Playwright — start it with `npm run realtime:dev` in a second terminal before running specs that exercise live debate features.
 
+Playwright runs in two projects:
 
-The test is automatically carried out by GitHub Action's Continuous Integration.  To see test results from the command line interface, do:
+- `public` — auth and browse pages, no login required
+- `setup` + `authenticated` — logs in once via `tests/auth.setup.ts`, then runs all room/session specs against the persisted storage state
 
-> `npm run test`
+To run only one project: `npx playwright test --project=public`.
 
+## Important limitations
 
-## 2. End-to-End (E2E) Tests
+- **E2E tests require a live Supabase project.** They sign in with real credentials and write rows to your database. Use a throwaway Supabase project for CI; do not point them at production data.
+- **The realtime SFU is not started by Playwright or by CI.** Specs that join a room will fail to establish video/audio unless `npm run realtime:dev` (or `npm run realtime:docker:up`) is running locally. The current CI workflow runs only the public + authenticated browser specs and does not boot the SFU, so peer-to-peer media is not regression-tested in CI.
+- **Mediasoup audio/video streams are not asserted byte-for-byte.** Tests verify that the producer/consumer signaling round-trips and that the peer appears in the room; perceptual media quality is verified manually.
+- **Live transcription and AI claim detection are not exercised in tests.** They depend on external paid APIs (OpenAI, Gemini) and are stubbed out in unit tests.
+- **Authenticated E2E jobs need extra secrets.** Pull requests from forks will see those steps skipped because `TEST_USER_EMAIL` / `TEST_USER_PASSWORD` are not exposed to fork workflows.
 
-End-to-end tests are located in the `tests` directory and are implemented using Playwright. These tests simulate real user behavior in a full browser environment.
+## CI
 
-Purposes:
-* Validate complete system workflows
-* Ensure correct integration between frontend, backend, and database
-* Test real-time user interactions under realistic conditions
+Three workflows under `.github/workflows/` run on every push and PR to `master`:
 
-Scope:
-* User authentication flows
-* Session creation and management
-* Admin workflows
-* Live debate participation
-* Real-time communication setup
+- `unit-tests.yml` — runs `npm run test:unit`
+- `sfu-tests.yml` — runs `npm run test:sfu`
+- `e2e-tests.yml` — installs Playwright browsers, runs the `public` project, then runs `setup` + `authenticated` if the test-user secrets are available
 
-Again, GitHub Action takes care of the test executions.  To see them in the command line interface, do:
-> `npx playwright test`
-
-
-Test execution reports are stored in the `playwright-report` directory.
-
-
-## 3. Real-Time System Testing
-
-The application includes real-time communication features built using WebRTC-based media streaming and WebSocket signaling.
-
-Components Tested:
-* Socket.IO event-based signaling
-* mediasoup transport and session initialization
-* Multi-user synchronization in debate sessions
-* Join/leave events and state updates
-
-Testing Approaches:
-* Simulated multi-client sessions in E2E tests
-* Event-based validation of socket communication
-* Mocked signaling flows for isolated unit tests
-* Manual verification for media stream behavior
-
-
-
-## 4. Test Environment Setup
-Requirements:
-* Node.js installed
-* Environment variables configured
-* Database instance running (PostgreSQL or Supabase)
-
-Setup Steps:
-> `npm install` \
-> `npx prisma generate` \
-> `npx prisma migrate dev`
-
-
-## 5. Summary
-
-The testing strategy is designed in layers:
-
-* Unit & mock tests (Vitest) → Validate isolated logic and simulate dependencies
-* Integration tests → Validate interactions between modules
-* E2E tests (Playwright) → Validate full user workflows
-* Real-time tests → Validate live communication systems
-
-External dependencies are mocked where necessary to ensure test stability and repeatability.
-
-Together, these layers ensure correctness at both the component and system level, providing confidence in application stability and user experience.
+Failing checks block merges. The Playwright HTML report is uploaded as a workflow artifact for every E2E run, passing or failing.
