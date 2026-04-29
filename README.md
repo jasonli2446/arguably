@@ -125,6 +125,10 @@ AI-powered transcription worked reliably in local development but failed during 
 
 On the backend, designing the database schema was difficult due to evolving requirements, particularly around supporting multiple debate formats. Frequent schema changes introduced complexity, which was mitigated by adopting more flexible designs such as nullable fields.
 
-# License (Placeholder)
+## License
 
-This project is for academic use only and is not formally licensed yet.
+This project is licensed under the MIT License.
+
+The MIT License is a permissive open-source license that allows anyone to use, modify, distribute, and sublicense this software, provided that the original copyright notice and license text are included in all copies or substantial portions of the software.
+
+For more details, consult `LICENSE.md` in the root directory.
