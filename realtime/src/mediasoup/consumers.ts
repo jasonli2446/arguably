@@ -5,6 +5,7 @@ import type {
   RtpCapabilities,
 } from "mediasoup/types";
 
+/** Creates a paused mediasoup consumer after checking RTP capability compatibility. */
 export async function createConsumer(
   router: Router,
   transport: Transport,

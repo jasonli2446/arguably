@@ -10,6 +10,7 @@ function createPrismaClient() {
   return new PrismaClient({ adapter });
 }
 
+/** Shared Prisma client configured with the PostgreSQL adapter and reused during development. */
 export const prisma = globalForPrisma.prisma || createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

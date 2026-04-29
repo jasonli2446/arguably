@@ -15,6 +15,7 @@ const rtpParameters = z.record(z.string(), z.unknown());
 
 // ── Event payload schemas ──
 
+/** Zod schemas for Socket.IO SFU event payloads. */
 export const schemas = {
   getRouterRtpCapabilities: z.object({
     roomId,
@@ -66,10 +67,12 @@ export const schemas = {
 
 // ── Validation helper ──
 
+/** Result of validating an inbound socket payload. */
 export type ValidationResult<T> =
   | { success: true; data: T }
   | { success: false; error: string };
 
+/** Validates unknown event data and formats Zod issues for socket acknowledgements. */
 export function validatePayload<T>(
   schema: z.ZodType<T>,
   data: unknown,

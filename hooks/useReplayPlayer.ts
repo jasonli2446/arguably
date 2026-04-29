@@ -2,13 +2,16 @@
 
 import { useState, useRef, useCallback, useEffect } from "react"
 
+/** Playback speeds supported by the replay timeline. */
 export type PlaybackSpeed = 1 | 1.5 | 2
 
-interface UseReplayPlayerOptions {
+/** Options used to initialize replay timeline playback. */
+export interface UseReplayPlayerOptions {
   /** Total debate duration in seconds */
   duration: number
 }
 
+/** Provides requestAnimationFrame-driven replay timeline state and seek controls. */
 export function useReplayPlayer({ duration }: UseReplayPlayerOptions) {
   const [currentTime, setCurrentTime] = useState(0) // seconds from debate start
   const [isPlaying, setIsPlaying] = useState(false)

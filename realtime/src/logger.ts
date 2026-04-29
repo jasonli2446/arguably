@@ -1,4 +1,6 @@
+/** Supported structured log severity levels. */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal'
+/** Arbitrary structured fields attached to a log event. */
 export type LogContext = Record<string, unknown>
 
 const LEVEL_VALUES: Record<LogLevel, number> = {
@@ -19,6 +21,7 @@ function emit(level: LogLevel, component: string, ctx: LogContext, msg: string):
   )
 }
 
+/** Component-scoped structured logger API. */
 export interface Logger {
   debug(ctx: LogContext, msg: string): void
   info(ctx: LogContext, msg: string): void
@@ -27,6 +30,7 @@ export interface Logger {
   fatal(ctx: LogContext, msg: string): void
 }
 
+/** Creates a JSON logger that tags every event with the given component name. */
 export function createLogger(component: string): Logger {
   return {
     debug: (ctx, msg) => emit('debug', component, ctx, msg),

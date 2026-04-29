@@ -11,6 +11,9 @@
     "test:e2e": "playwright test",
     "test:unit": "vitest run",
     "test:sfu": "vitest run --config vitest.sfu.config.ts",
+    "docs:app": "typedoc --options typedoc.app.json",
+    "docs:realtime": "typedoc --options realtime/typedoc.json",
+    "docs": "npm run docs:app && npm run docs:realtime",
     "postinstall": "prisma generate",
     "realtime:dev": "npm --prefix realtime run dev",
     "realtime:docker:up": "npm --prefix realtime run docker:up",
@@ -57,6 +60,7 @@
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "tailwindcss": "^4",
+    "typedoc": "^0.28.19",
     "typescript": "^5",
     "vitest": "^2.0.0"
   },

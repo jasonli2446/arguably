@@ -1,3 +1,4 @@
+/** Forces room data to load dynamically so live state is never cached. */
 export const dynamic = 'force-dynamic'
 
 import { getSessionByCode } from '@/lib/actions/session'
@@ -8,6 +9,7 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound, redirect } from 'next/navigation'
 import RoomClient from './RoomClient'
 
+/** Server room entry point that validates access, loads session data, and mounts live debate UI. */
 export default async function RoomPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const session = await getSessionByCode(code)

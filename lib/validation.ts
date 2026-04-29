@@ -1,8 +1,10 @@
+/** Result returned by password validation with all unmet requirements. */
 export interface PasswordValidationResult {
   valid: boolean
   errors: string[]
 }
 
+/** Validates signup passwords against length, case, number, and symbol requirements. */
 export function validatePassword(password: string): PasswordValidationResult {
   const errors: string[] = []
 
@@ -25,6 +27,7 @@ export function validatePassword(password: string): PasswordValidationResult {
   return { valid: errors.length === 0, errors }
 }
 
+/** Scores a password into a coarse strength bucket for client-side feedback. */
 export function getPasswordStrength(password: string): 'weak' | 'fair' | 'strong' {
   let score = 0
   if (password.length >= 8) score++

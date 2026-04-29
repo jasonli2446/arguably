@@ -5,7 +5,8 @@ import type { Socket } from 'socket.io-client'
 import type { types as mediasoupTypes } from 'mediasoup-client'
 import { createClient } from '@/lib/supabase/client'
 
-type ConnectionState = 'disconnected' | 'connecting' | 'reconnecting' | 'connected' | 'error'
+/** Connection lifecycle states exposed by the mediasoup hook. */
+export type ConnectionState = 'disconnected' | 'connecting' | 'reconnecting' | 'connected' | 'error'
 
 // ── Server response types ──
 
@@ -69,13 +70,15 @@ interface TransportFailureEvent {
 
 // ── Hook interfaces ──
 
-interface RemoteStream {
+/** Remote media stream plus peer display metadata. */
+export interface RemoteStream {
   stream: MediaStream
   displayName: string
   kind: 'video' | 'audio'
 }
 
-interface UseMediasoupOptions {
+/** Options used to establish mediasoup publishing and consuming. */
+export interface UseMediasoupOptions {
   sfuUrl: string | undefined
   roomId: string
   displayName: string
@@ -83,7 +86,8 @@ interface UseMediasoupOptions {
   enabled: boolean
 }
 
-interface UseMediasoupReturn {
+/** Public state and controls returned by the mediasoup hook. */
+export interface UseMediasoupReturn {
   connectionState: ConnectionState
   localStream: MediaStream | null
   remoteStreams: Map<string, RemoteStream>
@@ -97,6 +101,7 @@ interface UseMediasoupReturn {
   reconnect: () => void
 }
 
+/** Emits an SFU Socket.IO event and rejects when the server acknowledgement is unsuccessful. */
 function request(socket: Socket, event: string, data: Record<string, unknown> = {}): Promise<SfuAckResponse> {
   return new Promise((resolve, reject) => {
     socket.emit(event, data, (response: SfuAckResponse) => {
@@ -109,6 +114,7 @@ function request(socket: Socket, event: string, data: Record<string, unknown> = 
   })
 }
 
+/** Manages mediasoup client setup, local media publishing, remote consumption, and reconnect cleanup. */
 export function useMediasoup({
   sfuUrl,
   roomId,

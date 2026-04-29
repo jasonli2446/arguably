@@ -47,7 +47,8 @@ import { promoteFromQueue } from '@/lib/actions/queue'
 import { useRouter } from 'next/navigation'
 import { SessionRole, SessionStatus, SessionType } from '@/lib/generated/prisma'
 
-interface SessionData {
+/** Serialized live-room session payload passed from the room server page. */
+export interface SessionData {
   id: string
   code: string
   name: string
@@ -71,6 +72,7 @@ interface SessionData {
   detectedClaims: ClaimView[]
 }
 
+/** Live debate room client that coordinates media, turns, transcript, claims, queue, and moderation. */
 export default function RoomClient({
   session,
   currentUserId,

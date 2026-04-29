@@ -4,6 +4,7 @@ import { SessionRole } from "@/lib/generated/prisma"
 import { doPromoteFromQueue, cleanupUserVotes } from "@/lib/actions/queue"
 import { NextRequest, NextResponse } from "next/server"
 
+/** Marks the current participant as left, clears queue/votes, and promotes a replacement if needed. */
 export async function POST(req: NextRequest) {
   try {
   const supabase = await createClient()

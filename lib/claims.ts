@@ -2,12 +2,14 @@ import { prisma } from "@/lib/prisma"
 
 // ── Interfaces ──
 
+/** Source reference attached to a detected factual claim. */
 export interface SourceView {
   title: string
   url: string
   description: string
 }
 
+/** Client-safe view of a detected claim and its fact-check analysis. */
 export interface ClaimView {
   id: string
   sessionId: string
@@ -22,7 +24,8 @@ export interface ClaimView {
   createdAt: string
 }
 
-interface SaveClaimInput {
+/** Input required to persist a detected claim. */
+export interface SaveClaimInput {
   sessionId: string
   transcriptSegmentId: string
   claimText: string
@@ -82,6 +85,7 @@ function validateSources(raw: unknown): SourceView[] {
 
 // ── Data Access ──
 
+/** Lists detected claims for a session in creation order. */
 export async function listClaims(sessionId: string): Promise<ClaimView[]> {
   const claims = await prisma.detectedClaim.findMany({
     where: { session_id: sessionId },
@@ -91,6 +95,7 @@ export async function listClaims(sessionId: string): Promise<ClaimView[]> {
   return claims.map(toClaimView)
 }
 
+/** Persists one detected claim and returns it in client view form. */
 export async function saveClaim(input: SaveClaimInput): Promise<ClaimView> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const claim = await (prisma.detectedClaim.create as any)({
@@ -111,7 +116,8 @@ export async function saveClaim(input: SaveClaimInput): Promise<ClaimView> {
 
 // ── Gemini Claim Detection ──
 
-interface DetectClaimsInput {
+/** Input required to run claim detection for one transcript segment. */
+export interface DetectClaimsInput {
   segmentId: string
   sessionId: string
   text: string
@@ -128,6 +134,7 @@ interface GeminiClaim {
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 const DETECT_TIMEOUT_MS = 10_000
 
+/** Runs Gemini claim detection for a transcript segment and stores qualifying claims. */
 export async function detectAndSaveClaims(input: DetectClaimsInput): Promise<ClaimView[]> {
   const { segmentId, sessionId, text } = input
 

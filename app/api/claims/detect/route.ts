@@ -7,6 +7,7 @@ function badRequest(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status })
 }
 
+/** Detects factual claims for an existing transcript segment after verifying session participation. */
 export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

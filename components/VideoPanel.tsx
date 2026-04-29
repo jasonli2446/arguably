@@ -2,7 +2,8 @@
 
 import { useRef, useEffect } from 'react'
 
-interface VideoPanelProps {
+/** Props for rendering a local or remote video stream panel. */
+export interface VideoPanelProps {
   stream: MediaStream | null
   muted: boolean
   label: string
@@ -10,6 +11,7 @@ interface VideoPanelProps {
   className?: string
 }
 
+/** Displays a local or remote media stream with a labeled placeholder when no stream is present. */
 export default function VideoPanel({ stream, muted, label, mirror = false, className = '' }: VideoPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
 

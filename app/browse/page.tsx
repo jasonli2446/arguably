@@ -2,8 +2,10 @@ import { getSessionsByFilters } from '@/lib/actions/session'
 import { getSessionCapacity } from '@/lib/utils'
 import BrowseClient from './BrowseClient'
 
+/** Forces the browse page to render fresh session data on each request. */
 export const dynamic = 'force-dynamic'
 
+/** Server page that loads browseable debate sessions and serializes them for the client. */
 export default async function BrowsePage() {
   let sessions: Awaited<ReturnType<typeof getSessionsByFilters>> = []
   try {

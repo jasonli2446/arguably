@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/actions/utils"
 import { SessionStatus, VoteType } from "@/lib/generated/prisma"
 
+/** Casts a typed vote against another active participant in a live session. */
 export async function castVote(
   sessionId: string,
   targetUserId: string,
@@ -49,6 +50,7 @@ export async function castVote(
   })
 }
 
+/** Removes the authenticated user's vote for the target and vote type. */
 export async function retractVote(
   sessionId: string,
   targetUserId: string,
@@ -68,6 +70,7 @@ export async function retractVote(
   })
 }
 
+/** Counts votes of one type against a target user in a session. */
 export async function getVoteCounts(
   sessionId: string,
   targetUserId: string,

@@ -4,13 +4,15 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { ClaimView, SourceView } from '@/lib/claims'
 
-interface UseLiveClaimsOptions {
+/** Options used to seed and subscribe to live detected claims. */
+export interface UseLiveClaimsOptions {
   sessionId: string
   initialClaims: ClaimView[]
 }
 
 const URL_PATTERN = /^https?:\/\//
 
+/** Keeps only well-formed source objects with HTTP(S) URLs from realtime payloads. */
 function validateSources(raw: unknown): SourceView[] {
   if (!Array.isArray(raw)) return []
   return raw.filter(
@@ -24,6 +26,7 @@ function validateSources(raw: unknown): SourceView[] {
   )
 }
 
+/** Maps a Supabase realtime DetectedClaim row into the client claim view shape. */
 function mapRealtimeClaim(row: Record<string, unknown>, speakerName: string): ClaimView {
   return {
     id: String(row.id),
@@ -40,6 +43,7 @@ function mapRealtimeClaim(row: Record<string, unknown>, speakerName: string): Cl
   }
 }
 
+/** Subscribes to detected claim inserts for a session and merges them into local state. */
 export function useLiveClaims({ sessionId, initialClaims }: UseLiveClaimsOptions) {
   const [claims, setClaims] = useState<ClaimView[]>(initialClaims)
 

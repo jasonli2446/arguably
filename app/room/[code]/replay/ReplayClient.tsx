@@ -53,6 +53,7 @@ const SPEAKER_BG_COLORS = [
   'bg-pink-600/20 border-pink-600/40',
 ]
 
+/** Replay viewer for ended debates with timeline playback, transcript seek, and analytics export. */
 export default function ReplayClient({ data }: { data: ReplayData }) {
   const router = useRouter()
   const player = useReplayPlayer({ duration: data.debateDuration })

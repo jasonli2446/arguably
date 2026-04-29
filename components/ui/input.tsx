@@ -1,8 +1,10 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
+/** Native input props supported by the shared styled input. */
 export type InputProps = React.InputHTMLAttributes<HTMLInputElement>
 
+/** Styled form input that forwards refs to the native input element. */
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, ...props }, ref) => {
     return (

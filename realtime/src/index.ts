@@ -23,6 +23,7 @@ const testClientDir = path.resolve(__dirname, "..", "test-client");
 
 // ── CORS configuration ──
 
+/** Resolves allowed browser origins, failing production startup when not configured. */
 function getCorsOrigin(): string[] {
   const envOrigins = process.env.ALLOWED_ORIGINS;
   if (envOrigins) {
@@ -121,6 +122,7 @@ io.use(createAuthMiddleware());
 
 // ── Start ──
 
+/** Boots mediasoup workers, Socket.IO signaling, debate recovery, and HTTP listen. */
 async function main(): Promise<void> {
   await createWorkers();
   setupSignaling(io);

@@ -6,6 +6,7 @@ const log = createLogger("auth");
 
 const isProduction = process.env.NODE_ENV === "production";
 
+/** Builds Socket.IO middleware that validates Supabase JWTs and stores userId on socket data. */
 export function createAuthMiddleware() {
   const secret = process.env.SUPABASE_JWT_SECRET;
 

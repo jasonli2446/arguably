@@ -8,8 +8,11 @@ import type {
 
 // ── Environment with defaults ──
 
+/** Public IP or hostname announced in ICE candidates. */
 const ANNOUNCED_IP = process.env.ANNOUNCED_IP || "127.0.0.1";
+/** HTTP and Socket.IO listen port for the realtime server. */
 const LISTEN_PORT = parseInt(process.env.LISTEN_PORT || "3001", 10);
+/** Number of mediasoup workers to start. */
 const NUM_WORKERS = parseInt(
   process.env.MEDIASOUP_NUM_WORKERS || String(Math.min(os.cpus().length, 4)),
   10,
@@ -42,6 +45,7 @@ if (process.env.NODE_ENV === "production") {
 
 // ── mediasoup worker settings ──
 
+/** Worker-level mediasoup settings, including RTC port range. */
 export const workerSettings: WorkerSettings = {
   logLevel: "warn",
   rtcMinPort: RTC_MIN_PORT,
@@ -50,6 +54,7 @@ export const workerSettings: WorkerSettings = {
 
 // ── Router codecs ──
 
+/** Router media codec configuration advertised to clients. */
 export const routerOptions: RouterOptions = {
   mediaCodecs: [
     {
@@ -78,6 +83,7 @@ export const routerOptions: RouterOptions = {
 
 // ── WebRTC transport options ──
 
+/** Shared WebRTC transport settings for mediasoup send and receive transports. */
 export const webRtcTransportOptions: WebRtcTransportOptions = {
   listenInfos: [
     { protocol: "udp", ip: "0.0.0.0", announcedAddress: ANNOUNCED_IP },
@@ -91,6 +97,7 @@ export const webRtcTransportOptions: WebRtcTransportOptions = {
 
 // ── ICE servers (sent to clients) ──
 
+/** STUN/TURN servers sent to browser clients for ICE negotiation. */
 export const iceServers = [
   { urls: "stun:stun.l.google.com:19302" },
   {

@@ -35,6 +35,7 @@ async function requireEndedSession(code: string) {
   return { user, session }
 }
 
+/** Fully serialized replay payload consumed by the ended-session replay client. */
 export interface ReplayData {
   session: {
     id: string
@@ -71,6 +72,7 @@ export interface ReplayData {
   }
 }
 
+/** Loads an ended session's replay timeline, transcript, participants, and analytics. */
 export async function getReplayData(sessionCode: string): Promise<ReplayData> {
   const { session } = await requireEndedSession(sessionCode)
 
@@ -181,6 +183,7 @@ export async function getReplayData(sessionCode: string): Promise<ReplayData> {
   }
 }
 
+/** Computes participant and session analytics for an ended session. */
 export async function getSessionAnalytics(sessionCode: string) {
   const { session } = await requireEndedSession(sessionCode)
 
@@ -224,6 +227,7 @@ export async function getSessionAnalytics(sessionCode: string) {
   return { participants: participantStats, session: sessionStats }
 }
 
+/** Exports analytics for an ended session as CSV text. */
 export async function exportAnalyticsCsv(sessionCode: string): Promise<string> {
   const analytics = await getSessionAnalytics(sessionCode)
   return formatAnalyticsCsv(analytics.participants, analytics.session)

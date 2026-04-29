@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma"
 
+/** Admin-only layout guard that redirects non-admin users out of the admin area. */
 export default async function AdminLayout({
   children,
 }: {

@@ -26,7 +26,8 @@ import {
 
 // ── Types ──
 
-type DashboardStats = {
+/** Aggregate platform counters shown in the admin dashboard. */
+export type DashboardStats = {
   totalUsers: number
   activeUsers: number
   liveSessions: number
@@ -34,7 +35,8 @@ type DashboardStats = {
   recentSignups: number
 }
 
-type AuditEntry = {
+/** One admin action recorded in the audit log. */
+export type AuditEntry = {
   id: string
   action: string
   target_type: string
@@ -44,7 +46,8 @@ type AuditEntry = {
   admin: { username: string }
 }
 
-type AuditLogData = {
+/** Paginated audit log payload shown in the admin dashboard. */
+export type AuditLogData = {
   entries: AuditEntry[]
   total: number
   page: number
@@ -87,7 +90,8 @@ type PlatformConfigData = {
   updated_at: Date
 }
 
-interface AdminClientProps {
+/** Initial server-loaded data required by the admin dashboard client. */
+export interface AdminClientProps {
   initialStats: DashboardStats
   initialAuditLog: AuditLogData
 }
@@ -873,6 +877,7 @@ function SettingsTab() {
 
 // ── Main component ──
 
+/** Client dashboard for admin user management, session controls, platform config, and audit logs. */
 export default function AdminClient({ initialStats, initialAuditLog }: AdminClientProps) {
   return (
     <div className="min-h-screen debate-container bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 dark">

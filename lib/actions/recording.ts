@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { requireAuth, requireHostOrModerator, requireParticipant } from "@/lib/actions/utils"
 
+/** Creates a recording record for a session by a host or moderator. */
 export async function createRecording(
   sessionId: string,
   url: string,
@@ -24,6 +25,7 @@ export async function createRecording(
   })
 }
 
+/** Lists recordings visible to active participants in a session. */
 export async function getRecordingsBySession(sessionId: string) {
   await requireParticipant(sessionId)
 
@@ -36,6 +38,7 @@ export async function getRecordingsBySession(sessionId: string) {
   })
 }
 
+/** Deletes a recording when requested by its recorder or session host. */
 export async function deleteRecording(recordingId: string) {
   const user = await requireAuth()
 

@@ -9,7 +9,8 @@ import FloatingNav from '@/components/FloatingNav'
 import { useRouter } from 'next/navigation'
 import { joinSession } from '@/lib/actions/session'
 
-interface SessionData {
+/** Serialized session row displayed by the browse page client. */
+export interface SessionData {
   id: string
   code: string
   name: string
@@ -45,6 +46,7 @@ const STATUS_COLORS: Record<string, string> = {
   ENDED: 'bg-blue-600',
 }
 
+/** Interactive session browser with client-side search, filters, and join handling. */
 export default function BrowseClient({ sessions }: { sessions: SessionData[] }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [joiningId, setJoiningId] = useState<string | null>(null)

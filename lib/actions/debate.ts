@@ -6,6 +6,7 @@ import { SessionRole, SessionType } from "@/lib/generated/prisma"
 import { requireHostOrModerator } from "@/lib/actions/utils"
 import { doPromoteFromQueue } from "@/lib/actions/queue"
 
+/** Returns the persisted debate turn state for an authenticated user. */
 export async function getDebateState(sessionId: string) {
   // Auth check: require authenticated user
   const supabase = await createClient()
@@ -33,6 +34,7 @@ export async function getDebateState(sessionId: string) {
   }
 }
 
+/** Starts a debate by validating debaters and creating or resetting debate state. */
 export async function startDebate(
   sessionId: string,
   debaters: { userId: string; displayName: string }[],
@@ -147,6 +149,7 @@ export async function startDebate(
   })
 }
 
+/** Advances the current turn, rotating challengers for Expert vs Crowd when needed. */
 export async function advanceTurn(sessionId: string) {
   const { session } = await requireHostOrModerator(sessionId)
 
@@ -228,6 +231,7 @@ export async function advanceTurn(sessionId: string) {
   })
 }
 
+/** Auto-advances an expired turn for active participants without host privileges. */
 export async function advanceTurnIfExpired(sessionId: string) {
   const supabase = await createClient()
   const {
@@ -328,6 +332,7 @@ export async function advanceTurnIfExpired(sessionId: string) {
   })
 }
 
+/** Pauses an active debate and stores remaining time. */
 export async function pauseDebate(sessionId: string) {
   await requireHostOrModerator(sessionId)
 
@@ -353,6 +358,7 @@ export async function pauseDebate(sessionId: string) {
   })
 }
 
+/** Resumes a paused debate using its stored remaining time. */
 export async function resumeDebate(sessionId: string) {
   await requireHostOrModerator(sessionId)
 
@@ -374,6 +380,7 @@ export async function resumeDebate(sessionId: string) {
   })
 }
 
+/** Extends the active or paused turn by additional seconds. */
 export async function extendTurn(sessionId: string, extraSeconds: number) {
   await requireHostOrModerator(sessionId)
 
@@ -400,6 +407,7 @@ export async function extendTurn(sessionId: string, extraSeconds: number) {
   }
 }
 
+/** Marks the debate phase as ended without throwing if state already disappeared. */
 export async function endDebate(sessionId: string) {
   await requireHostOrModerator(sessionId)
   await prisma.debateState

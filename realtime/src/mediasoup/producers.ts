@@ -5,6 +5,7 @@ import type {
   RtpParameters,
 } from "mediasoup/types";
 
+/** Creates a mediasoup producer for a track on an existing transport. */
 export async function createProducer(
   transport: Transport,
   kind: MediaKind,

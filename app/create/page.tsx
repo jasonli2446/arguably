@@ -18,6 +18,7 @@ const FORMAT_MAP: Record<string, SessionType> = {
   'panel': SessionType.PANEL,
 }
 
+/** Client-side room creation flow with format, capacity, timing, and draft controls. */
 export default function CreateRoom() {
   const [selectedFormat, setSelectedFormat] = useState<string>('expert-crowd')
   const [roomName, setRoomName] = useState('')
