@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { TranscriptSegmentView } from '@/lib/transcripts'
 
-interface UseLiveTranscriptOptions {
+/** Options used to capture, upload, and subscribe to live transcript segments. */
+export interface UseLiveTranscriptOptions {
   sessionId: string
   currentUserId: string
   localStream: MediaStream | null

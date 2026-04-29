@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "lib/generated/**",
     "app/generated/**",
+    "docs/api/**",
+    "docs/assets/**",
     "realtime/**",
   ]),
   {

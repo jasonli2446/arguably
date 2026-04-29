@@ -15,7 +15,8 @@ export interface KickVoteState {
   userHasVoted: boolean
 }
 
-interface UseKickVoteChannelOptions {
+/** Options used to subscribe to kick-vote state for a session. */
+export interface UseKickVoteChannelOptions {
   sessionId: string
   userId: string | null
   debaterIds: string[]

@@ -2,7 +2,8 @@
 
 import { useRef, useEffect } from 'react'
 
-interface VideoPanelProps {
+/** Props for rendering a local or remote video stream panel. */
+export interface VideoPanelProps {
   stream: MediaStream | null
   muted: boolean
   label: string

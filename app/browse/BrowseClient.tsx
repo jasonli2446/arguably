@@ -9,7 +9,8 @@ import FloatingNav from '@/components/FloatingNav'
 import { useRouter } from 'next/navigation'
 import { joinSession } from '@/lib/actions/session'
 
-interface SessionData {
+/** Serialized session row displayed by the browse page client. */
+export interface SessionData {
   id: string
   code: string
   name: string

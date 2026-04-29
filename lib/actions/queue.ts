@@ -5,7 +5,8 @@ import { requireAuth, requireHostOrModerator } from "@/lib/actions/utils"
 import { SessionRole, SessionStatus, VoteType } from "@/lib/generated/prisma"
 import type { PrismaClient } from "@/lib/generated/prisma"
 
-type TransactionClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]
+/** Prisma transaction client accepted by queue helper functions. */
+export type TransactionClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]
 
 // ---------------------------------------------------------------------------
 // Internal helpers (NOT server actions — called within transactions)

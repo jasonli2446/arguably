@@ -18,7 +18,8 @@ import FloatingNav from '@/components/FloatingNav'
 import { updateUserProfile, deleteAccount } from '@/lib/actions/user'
 import { DEFAULT_PREFERENCES, type UserPreferences } from '@/lib/constants/preferences'
 
-interface UserProfile {
+/** Editable user profile payload loaded by the settings server page. */
+export interface UserProfile {
   id: string
   username: string
   email: string | null

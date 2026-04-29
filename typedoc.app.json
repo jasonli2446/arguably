@@ -1,0 +1,23 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Arguably App API",
+  "tsconfig": "./tsconfig.typedoc.json",
+  "entryPointStrategy": "expand",
+  "entryPoints": ["app", "components", "hooks", "lib"],
+  "exclude": [
+    "lib/generated/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "__tests__/**",
+    "tests/**"
+  ],
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "excludeExternals": true,
+  "skipErrorChecking": true,
+  "readme": "none",
+  "outputs": [
+    { "name": "html", "path": "docs/api/app" },
+    { "name": "json", "path": "docs/api/app.json" }
+  ]
+}

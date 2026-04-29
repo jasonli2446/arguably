@@ -17,7 +17,8 @@ export interface QueueEntry {
   addedAt: string
 }
 
-interface UseQueueChannelOptions {
+/** Options used to subscribe to an audience queue. */
+export interface UseQueueChannelOptions {
   sessionId: string
   userId: string | null
 }

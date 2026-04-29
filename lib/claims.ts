@@ -24,7 +24,8 @@ export interface ClaimView {
   createdAt: string
 }
 
-interface SaveClaimInput {
+/** Input required to persist a detected claim. */
+export interface SaveClaimInput {
   sessionId: string
   transcriptSegmentId: string
   claimText: string
@@ -115,7 +116,8 @@ export async function saveClaim(input: SaveClaimInput): Promise<ClaimView> {
 
 // ── Gemini Claim Detection ──
 
-interface DetectClaimsInput {
+/** Input required to run claim detection for one transcript segment. */
+export interface DetectClaimsInput {
   segmentId: string
   sessionId: string
   text: string

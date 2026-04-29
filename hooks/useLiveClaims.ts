@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { ClaimView, SourceView } from '@/lib/claims'
 
-interface UseLiveClaimsOptions {
+/** Options used to seed and subscribe to live detected claims. */
+export interface UseLiveClaimsOptions {
   sessionId: string
   initialClaims: ClaimView[]
 }

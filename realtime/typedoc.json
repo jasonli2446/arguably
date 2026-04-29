@@ -1,0 +1,16 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Arguably Realtime API",
+  "tsconfig": "./tsconfig.json",
+  "entryPointStrategy": "expand",
+  "entryPoints": ["src"],
+  "exclude": ["dist/**", "**/*.test.ts", "**/*.spec.ts"],
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "skipErrorChecking": true,
+  "readme": "none",
+  "outputs": [
+    { "name": "html", "path": "../docs/api/realtime" },
+    { "name": "json", "path": "../docs/api/realtime.json" }
+  ]
+}

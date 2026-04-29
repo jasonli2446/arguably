@@ -3,15 +3,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Socket as IoSocket } from 'socket.io-client'
 
-interface DebateParticipant {
+/** Participant identity used in client-side debate turn state. */
+export interface DebateParticipant {
   userId: string
   displayName: string
 }
 
-type DebateStatus = 'idle' | 'live' | 'paused' | 'ended'
-type DebatePhase = 'ACTIVE' | 'GRACE' | 'PAUSED' | 'ENDED'
+/** High-level debate status exposed to room UI. */
+export type DebateStatus = 'idle' | 'live' | 'paused' | 'ended'
+/** Realtime debate phase mirrored from the SFU turn engine. */
+export type DebatePhase = 'ACTIVE' | 'GRACE' | 'PAUSED' | 'ENDED'
 
-interface UseDebateChannelOptions {
+/** Options used to connect the client to a debate Socket.IO channel. */
+export interface UseDebateChannelOptions {
   sfuUrl: string | undefined
   roomCode: string
   userId: string | null

@@ -4,7 +4,8 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Button } from '@/components/ui/button'
 import { Loader2, X } from 'lucide-react'
 
-interface ConfirmDialogProps {
+/** Props for the reusable confirmation dialog. */
+export interface ConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string

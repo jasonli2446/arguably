@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "hooks/**/*.ts",
+    "lib/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    "realtime",
+    "lib/generated",
+    "__tests__",
+    "tests",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
+}

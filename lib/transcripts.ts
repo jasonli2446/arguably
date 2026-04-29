@@ -16,7 +16,8 @@ export interface TranscriptSegmentView {
   createdAt: string
 }
 
-interface SaveTranscriptSegmentInput {
+/** Input required to upsert one live transcript segment. */
+export interface SaveTranscriptSegmentInput {
   sessionId: string
   speakerId: string
   speakerName: string

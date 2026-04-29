@@ -5,7 +5,8 @@ import { useState, useRef, useCallback, useEffect } from "react"
 /** Playback speeds supported by the replay timeline. */
 export type PlaybackSpeed = 1 | 1.5 | 2
 
-interface UseReplayPlayerOptions {
+/** Options used to initialize replay timeline playback. */
+export interface UseReplayPlayerOptions {
   /** Total debate duration in seconds */
   duration: number
 }

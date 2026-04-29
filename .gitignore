@@ -24,6 +24,8 @@ public/Screenshot*.png
 # next.js
 /.next/
 /out/
+/docs/api/
+/docs/assets/
 
 # production
 /build
